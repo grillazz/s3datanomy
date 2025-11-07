@@ -32,6 +32,17 @@ class ParquetReader:
         return self.parquet_file.schema_arrow
 
     @property
+    def schema_parquet(self) -> Any:
+        """
+        Get the Parquet schema.
+
+        Returns
+        -------
+            Parquet schema for the Parquet file
+        """
+        return self.parquet_file.schema
+
+    @property
     def metadata(self) -> Any:
         """
         Get file metadata.
@@ -88,3 +99,14 @@ class ParquetReader:
             Row group metadata
         """
         return self.parquet_file.metadata.row_group(index)
+
+    @property
+    def metadata_size(self) -> int:
+        """
+        Get the size of the serialized footer metadata in bytes.
+
+        Returns
+        -------
+            Footer metadata size in bytes
+        """
+        return int(self.parquet_file.metadata.serialized_size)

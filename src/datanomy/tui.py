@@ -28,6 +28,28 @@ class StructureTab(Static):
         """Render the structure view."""
         yield Static(self._render_structure(), id="structure-content")
 
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """
+        Format size in bytes to human-readable format.
+
+        Parameters
+        ----------
+            size_bytes: Size in bytes
+
+        Returns
+        -------
+            str: Formatted size string (e.g., "1.23 KB", "45.67 MB")
+        """
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.2f} KB"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.2f} MB"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
     def _render_structure(self) -> Group:
         """
         Render the Parquet file structure diagram.
@@ -36,14 +58,14 @@ class StructureTab(Static):
         -------
             Group: Rich renderable showing file structure
         """
-        file_size_mb = self.reader.file_size / (1024 * 1024)
+        file_size_str = self._format_size(self.reader.file_size)
 
         # File info panel
         file_info = Text()
         file_info.append("File: ", style="bold")
         file_info.append(f"{self.reader.file_path.name}\n")
         file_info.append("Size: ", style="bold")
-        file_info.append(f"{file_size_mb:.2f} MB")
+        file_info.append(file_size_str)
 
         # Header section
         header_panel = Panel(
@@ -56,11 +78,11 @@ class StructureTab(Static):
         row_group_panels = []
         for i in range(self.reader.num_row_groups):
             rg = self.reader.get_row_group_info(i)
-            rg_size_mb = rg.total_byte_size / (1024 * 1024)
+            rg_size_str = self._format_size(rg.total_byte_size)
 
             rg_text = Text()
             rg_text.append(f"Rows: {rg.num_rows:,}\n")
-            rg_text.append(f"Size: {rg_size_mb:.2f} MB\n")
+            rg_text.append(f"Size: {rg_size_str}\n")
             rg_text.append(f"Columns: {rg.num_columns}")
 
             panel = Panel(
@@ -69,9 +91,11 @@ class StructureTab(Static):
             row_group_panels.append(panel)
 
         # Footer metadata
+        metadata_size_str = self._format_size(self.reader.metadata_size)
         footer_text = Text()
         footer_text.append(f"Total Rows: {self.reader.num_rows:,}\n")
-        footer_text.append(f"Row Groups: {self.reader.num_row_groups}\n\n")
+        footer_text.append(f"Row Groups: {self.reader.num_row_groups}\n")
+        footer_text.append(f"Metadata Size: {metadata_size_str}\n\n")
         footer_text.append("Magic Number: PAR1", style="yellow")
 
         footer_panel = Panel(
@@ -104,21 +128,34 @@ class SchemaTab(Static):
         """Render the schema view."""
         yield Static(self._render_schema(), id="schema-content")
 
-    def _render_schema(self) -> str:
+    def _render_schema(self) -> Group:
         """
         Render schema information.
 
         Returns
         -------
-            str: Formatted schema information
+            Group: Rich renderable showing both Arrow and Parquet schemas
         """
-        schema = self.reader.schema_arrow
-        lines = ["[bold cyan]Schema[/bold cyan]\n"]
+        # Arrow Schema
+        arrow_schema = self.reader.schema_arrow
+        arrow_lines = []
+        for i, field in enumerate(arrow_schema, 1):
+            arrow_lines.append(f"{i:3d}. [green]{field.name}[/green]: {field.type}")
 
-        for i, field in enumerate(schema, 1):
-            lines.append(f"{i:3d}. [green]{field.name}[/green]: {field.type}")
+        arrow_text = Text("\n".join(arrow_lines))
+        arrow_panel = Panel(
+            arrow_text, title="[cyan]Arrow Schema[/cyan]", border_style="cyan"
+        )
 
-        return "\n".join(lines)
+        # Parquet Schema
+        parquet_schema_str = str(self.reader.schema_parquet)
+        parquet_panel = Panel(
+            Text(parquet_schema_str),
+            title="[yellow]Parquet Schema[/yellow]",
+            border_style="yellow",
+        )
+
+        return Group(arrow_panel, Text(), parquet_panel)
 
 
 class DatanomyApp(App):
