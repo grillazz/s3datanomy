@@ -1,17 +1,83 @@
-from datanomy.tui import DatanomyApp
+"""Tests for the TUI module."""
 
 from pathlib import Path
+from typing import Any, TypedDict
+
 import pytest
-from datanomy.reader import ParquetReader
-from textual.containers import Container, VerticalScroll
 from rich.console import Console
+from textual.containers import Container, VerticalScroll
+
+from datanomy.reader import ParquetReader
+from datanomy.tui import DatanomyApp
 
 
-@pytest.mark.asyncio
-async def test_containers_with_simple_parquet(
-    simple_parquet: Path,
-) -> None:
-    reader = ParquetReader(simple_parquet)
+class FileDataFixture(TypedDict):
+    """Type definition for test file data."""
+
+    file_size: str
+    num_rows: int
+    num_row_groups: int
+    schema: dict[str, str]
+
+
+@pytest.fixture
+def file(request: pytest.FixtureRequest) -> Any:
+    """Indirect fixture to get other fixtures by name."""
+    return request.getfixturevalue(request.param)
+
+
+test_data_fixtures: dict[str, FileDataFixture] = {
+    "simple.parquet": {
+        "file_size": "0.00",
+        "num_rows": 5,
+        "num_row_groups": 1,
+        "schema": {
+            "id": "int64",
+            "name": "string",
+            "age": "int64",
+            "score": "double",
+        },
+    },
+    "multi_row_group.parquet": {
+        "file_size": "0.11",
+        "num_rows": 10000,
+        "num_row_groups": 5,
+        "schema": {
+            "id": "int64",
+            "category": "string",
+            "value": "int64",
+        },
+    },
+    "complex.parquet": {
+        "file_size": "0.00",
+        "num_rows": 3,
+        "num_row_groups": 1,
+        "schema": {
+            "id": "int64",
+            "data": "struct<x: int64, y: int64>",
+            "tags": "list<element: string>",
+        },
+    },
+    "empty.parquet": {
+        "file_size": "0.00",
+        "num_rows": 0,
+        "num_row_groups": 1,
+        "schema": {
+            "id": "int64",
+            "name": "string",
+        },
+    },
+    "large_schema.parquet": {
+        "file_size": "0.01",
+        "num_rows": 3,
+        "num_row_groups": 1,
+        "schema": {f"col_{i}": "int64" for i in range(50)},
+    },
+}
+
+
+async def check_app_for_file(filename: Path) -> None:
+    reader = ParquetReader(filename)
     app = DatanomyApp(reader)
     async with app.run_test():
         assert app.title == "DatanomyApp"
@@ -22,171 +88,47 @@ async def test_containers_with_simple_parquet(
         with console.capture() as capture:
             console.print(file_info_widget.render())
         file_info = capture.get()
-        assert "File: simple.parquet" in file_info
-        assert "Size: 0.00 MB" in file_info
-        assert "Rows: 5" in file_info
-        assert "Row Groups: 1" in file_info
+        file_data = test_data_fixtures[filename.name]
+        assert (
+            f"File: {filename.name}\nSize: {file_data['file_size']} MB\nRows: {file_data['num_rows']:,}\nRow Groups: {file_data['num_row_groups']}"
+            in file_info
+        )
+
         schema_widget = (
             app.query_one(VerticalScroll).query_one(Container).query_one("#schema")
         )
         with console.capture() as capture:
             console.print(schema_widget.render())
         schema_info = capture.get()
-        assert "id: int64" in schema_info
-        assert "name: string" in schema_info
-        assert "age: int64" in schema_info
-        assert "score: double" in schema_info
+        for field, dtype in file_data["schema"].items():
+            assert f"{field}: {dtype}" in schema_info
+
         row_groups_widget = (
             app.query_one(VerticalScroll).query_one(Container).query_one("#row-groups")
         )
         with console.capture() as capture:
             console.print(row_groups_widget.render())
         row_groups_info = capture.get()
-        assert "Row Group 0: 5 rows, 0.00 MB" in row_groups_info
+        for i in range(file_data["num_row_groups"]):
+            assert (
+                f"Row Group {i}: {int(file_data['num_rows']) // int(file_data['num_row_groups']):,} rows"
+                in row_groups_info
+            )
 
 
 @pytest.mark.asyncio
-async def test_containers_with_multi_row_group_parquet(
-    multi_row_group_parquet: Path,
+@pytest.mark.parametrize(
+    "file",
+    [
+        "simple_parquet",
+        "multi_row_group_parquet",
+        "complex_schema_parquet",
+        "empty_parquet",
+        "large_schema_parquet",
+    ],
+    indirect=True,
+)
+async def test_containers_with_files(
+    file: Path,
 ) -> None:
-    reader = ParquetReader(multi_row_group_parquet)
-    app = DatanomyApp(reader)
-    async with app.run_test():
-        assert app.title == "DatanomyApp"
-        console = Console()
-        file_info_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#file-info")
-        )
-        with console.capture() as capture:
-            console.print(file_info_widget.render())
-        file_info = capture.get()
-        assert "File: multi_row_group.parquet" in file_info
-        assert "Size: 0.11 MB" in file_info
-        assert "Rows: 10,000" in file_info
-        assert "Row Groups: 5" in file_info
-        schema_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#schema")
-        )
-        with console.capture() as capture:
-            console.print(schema_widget.render())
-        schema_info = capture.get()
-        assert "id: int64" in schema_info
-        assert "category: string" in schema_info
-        assert "value: int64" in schema_info
-        row_groups_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#row-groups")
-        )
-        with console.capture() as capture:
-            console.print(row_groups_widget.render())
-        row_groups_info = capture.get()
-        for i in range(5):
-            assert f"Row Group {i}: 2,000 rows, 0.04 MB" in row_groups_info
-
-
-@pytest.mark.asyncio
-async def test_containers_with_complex_schema_parquet(
-    complex_schema_parquet: Path,
-) -> None:
-    reader = ParquetReader(complex_schema_parquet)
-    app = DatanomyApp(reader)
-    async with app.run_test():
-        assert app.title == "DatanomyApp"
-        console = Console()
-        file_info_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#file-info")
-        )
-        with console.capture() as capture:
-            console.print(file_info_widget.render())
-        file_info = capture.get()
-        assert "File: complex.parquet" in file_info
-        assert "Size: 0.00 MB" in file_info
-        assert "Rows: 3" in file_info
-        assert "Row Groups: 1" in file_info
-        schema_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#schema")
-        )
-        with console.capture() as capture:
-            console.print(schema_widget.render())
-        schema_info = capture.get()
-        assert "id: int64" in schema_info
-        assert "data: struct<x: int64, y: int64>" in schema_info
-        assert "tags: list<element: string>" in schema_info
-        row_groups_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#row-groups")
-        )
-        with console.capture() as capture:
-            console.print(row_groups_widget.render())
-        row_groups_info = capture.get()
-        assert "Row Group 0: 3 rows, 0.00 MB" in row_groups_info
-
-
-@pytest.mark.asyncio
-async def test_containers_with_empty_parquet(
-    empty_parquet: Path,
-) -> None:
-    reader = ParquetReader(empty_parquet)
-    app = DatanomyApp(reader)
-    async with app.run_test():
-        assert app.title == "DatanomyApp"
-        console = Console()
-        file_info_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#file-info")
-        )
-        with console.capture() as capture:
-            console.print(file_info_widget.render())
-        file_info = capture.get()
-        assert "File: empty.parquet" in file_info
-        assert "Size: 0.00 MB" in file_info
-        assert "Rows: 0" in file_info
-        assert "Row Groups: 1" in file_info
-        schema_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#schema")
-        )
-        with console.capture() as capture:
-            console.print(schema_widget.render())
-        schema_info = capture.get()
-        assert "id: int64" in schema_info
-        assert "name: string" in schema_info
-        row_groups_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#row-groups")
-        )
-        with console.capture() as capture:
-            console.print(row_groups_widget.render())
-        row_groups_info = capture.get()
-        assert "Row Group 0: 0 rows, 0.00 MB" in row_groups_info
-
-
-@pytest.mark.asyncio
-async def test_containers_with_large_schema_parquet(
-    large_schema_parquet: Path,
-) -> None:
-    reader = ParquetReader(large_schema_parquet)
-    app = DatanomyApp(reader)
-    async with app.run_test():
-        assert app.title == "DatanomyApp"
-        console = Console()
-        file_info_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#file-info")
-        )
-        with console.capture() as capture:
-            console.print(file_info_widget.render())
-        file_info = capture.get()
-        assert "File: large_schema.parquet" in file_info
-        assert "Size: 0.01 MB" in file_info
-        assert "Rows: 3" in file_info
-        assert "Row Groups: 1" in file_info
-        schema_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#schema")
-        )
-        with console.capture() as capture:
-            console.print(schema_widget.render())
-        schema_info = capture.get()
-        for i in range(50):
-            assert f"col_{i}: int64" in schema_info
-        row_groups_widget = (
-            app.query_one(VerticalScroll).query_one(Container).query_one("#row-groups")
-        )
-        with console.capture() as capture:
-            console.print(row_groups_widget.render())
-        row_groups_info = capture.get()
-        assert "Row Group 0: 3 rows, 0.01 MB" in row_groups_info
+    await check_app_for_file(file)
