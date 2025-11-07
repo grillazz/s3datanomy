@@ -1,16 +1,34 @@
 [project]
 name = "datanomy"
 version = "0.1.0"
-description = "Add your description here"
+description = "Explore the anatomy of your columnar data files (Parquet, Arrow, and more)"
 readme = "README.md"
 authors = [
     { name = "Raúl Cumplido", email = "raulcumplido@gmail.com" }
 ]
-requires-python = ">=3.14"
-dependencies = []
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=0.90.0",
+    "pyarrow>=22.0.0",
+    "rich>=13.0.0",
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.0.0",
+]
 
 [project.scripts]
-datanomy = "datanomy:main"
+datanomy = "datanomy.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/raulcd/datanomy"
+Repository = "https://github.com/raulcd/datanomy"
+Issues = "https://github.com/raulcd/datanomy/issues"
 
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]
