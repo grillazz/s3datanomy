@@ -82,12 +82,31 @@ class StructureTab(Static):
         row_group_panels = []
         for i in range(self.reader.num_row_groups):
             rg = self.reader.get_row_group_info(i)
-            rg_size_str = self._format_size(rg.total_byte_size)
+
+            # Calculate compressed and uncompressed sizes
+            compressed_sum = sum(rg.column(j).total_compressed_size for j in range(rg.num_columns))
+            uncompressed_sum = rg.total_byte_size  # This is the uncompressed size
+
+            # Check if any column is compressed
+            has_compression = any(
+                rg.column(j).compression != "UNCOMPRESSED" for j in range(rg.num_columns)
+            )
+
+            compressed_str = self._format_size(compressed_sum)
+            uncompressed_str = self._format_size(uncompressed_sum)
 
             # Summary info
             rg_summary = Text()
             rg_summary.append(f"Rows: {rg.num_rows:,}\n")
-            rg_summary.append(f"Size: {rg_size_str}\n")
+            if has_compression:
+                rg_summary.append(f"Compressed: {compressed_str}\n")
+                rg_summary.append(f"Uncompressed: {uncompressed_str}\n")
+                # Calculate compression ratio
+                if uncompressed_sum > 0:
+                    compression_pct = (1 - compressed_sum / uncompressed_sum) * 100
+                    rg_summary.append(f"Compression: {compression_pct:.1f}%\n", style="green" if compression_pct > 0 else "yellow")
+            else:
+                rg_summary.append(f"Size: {compressed_str}\n")
             rg_summary.append(f"Columns: {rg.num_columns}\n")
 
             # Create column chunk table
@@ -108,11 +127,23 @@ class StructureTab(Static):
                     col_idx = row_idx + col_offset
                     if col_idx < cols_to_display:
                         col = rg.column(col_idx)
-                        col_size_str = self._format_size(col.total_compressed_size)
+                        col_compressed_str = self._format_size(col.total_compressed_size)
                         col_name = col.path_in_schema
+                        is_compressed = col.compression != "UNCOMPRESSED"
 
                         col_text = Text()
-                        col_text.append(f"Size: {col_size_str}\n", style="dim")
+                        if is_compressed:
+                            col_uncompressed_str = self._format_size(col.total_uncompressed_size)
+                            col_text.append(f"Compressed: {col_compressed_str}\n", style="dim")
+                            col_text.append(f"Uncompressed: {col_uncompressed_str}\n", style="dim")
+                            # Calculate compression ratio for this column
+                            if col.total_uncompressed_size > 0:
+                                col_compression_pct = (1 - col.total_compressed_size / col.total_uncompressed_size) * 100
+                                ratio_style = "green" if col_compression_pct > 0 else "yellow"
+                                col_text.append(f"Ratio: {col_compression_pct:.1f}%\n", style=ratio_style)
+                        else:
+                            col_text.append(f"Size: {col_compressed_str}\n", style="dim")
+                        col_text.append(f"Codec: {col.compression}\n", style="dim")
                         col_text.append(f"Type: {col.physical_type}", style="dim")
 
                         col_panel = Panel(
@@ -147,31 +178,77 @@ class StructureTab(Static):
 
         # Page indexes section (between row groups and footer)
         page_index_size = self.reader.page_index_size
-        page_index_panels = []
+        page_index_panels: list[Panel | Text] = []
         if page_index_size > 0:
             page_index_size_str = self._format_size(page_index_size)
 
-            # Column Index panel
-            col_index_text = Text()
-            col_index_text.append("Per-page statistics for filtering\n", style="dim")
-            col_index_text.append(f"Combined size: {page_index_size_str}", style="dim")
-            col_index_panel = Panel(
-                col_index_text,
-                title="[magenta]Column Index[/magenta]",
-                border_style="magenta",
-            )
-            page_index_panels.append(col_index_panel)
+            # Check what indexes and statistics are actually present
+            has_col_index = False
+            has_off_index = False
+            has_min_max = False
+            has_null_count = False
+            has_distinct_count = False
 
-            # Offset Index panel
-            offset_index_text = Text()
-            offset_index_text.append("Page locations for random access\n", style="dim")
-            offset_index_text.append("(included in combined size above)", style="dim")
-            offset_index_panel = Panel(
-                offset_index_text,
-                title="[magenta]Offset Index[/magenta]",
-                border_style="magenta",
-            )
-            page_index_panels.append(offset_index_panel)
+            for i in range(self.reader.num_row_groups):
+                rg = self.reader.get_row_group_info(i)
+                for j in range(rg.num_columns):
+                    col = rg.column(j)
+                    if col.has_column_index:
+                        has_col_index = True
+                    if col.has_offset_index:
+                        has_off_index = True
+
+                    # Check what statistics are actually present
+                    if col.is_stats_set:
+                        stats = col.statistics
+                        if stats.has_min_max:
+                            has_min_max = True
+                        if stats.has_null_count:
+                            has_null_count = True
+                        if stats.has_distinct_count:
+                            has_distinct_count = True
+
+            # Only show panels for indexes that are actually present
+            if has_col_index:
+                col_index_text = Text()
+                col_index_text.append("Per-page statistics for filtering\n\n", style="cyan")
+                col_index_text.append("Contains:\n", style="bold")
+
+                # Only list statistics that are actually present
+                if has_min_max:
+                    col_index_text.append("• min/max values per page\n", style="dim")
+                if has_null_count:
+                    col_index_text.append("• null_count per page\n", style="dim")
+                if has_distinct_count:
+                    col_index_text.append("• distinct_count per page\n", style="dim")
+
+                col_index_text.append("• Enables page-level pruning", style="dim")
+                col_index_panel = Panel(
+                    col_index_text,
+                    title="[magenta]Column Index[/magenta]",
+                    border_style="magenta",
+                )
+                page_index_panels.append(col_index_panel)
+
+            if has_off_index:
+                offset_index_text = Text()
+                offset_index_text.append("Page locations for random access\n\n", style="cyan")
+                offset_index_text.append("Contains:\n", style="bold")
+                offset_index_text.append("• Page file offsets\n", style="dim")
+                offset_index_text.append("• compressed_page_size\n", style="dim")
+                offset_index_text.append("• first_row_index per page", style="dim")
+                offset_index_panel = Panel(
+                    offset_index_text,
+                    title="[magenta]Offset Index[/magenta]",
+                    border_style="magenta",
+                )
+                page_index_panels.append(offset_index_panel)
+
+            # Add total size info if we have both indexes
+            if has_col_index and has_off_index:
+                total_text = Text()
+                total_text.append(f"Total page indexes: {page_index_size_str}", style="dim")
+                page_index_panels.append(total_text)
 
         # Footer metadata
         metadata_size_str = self._format_size(self.reader.metadata_size)
