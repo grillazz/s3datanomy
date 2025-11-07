@@ -2,6 +2,7 @@
 
 from rich.console import Group
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import ScrollableContainer
@@ -31,7 +32,7 @@ class StructureTab(Static):
     @staticmethod
     def _format_size(size_bytes: int) -> str:
         """
-        Format size in bytes to human-readable format.
+        Format size in bytes to human-readable format with byte count.
 
         Parameters
         ----------
@@ -39,16 +40,16 @@ class StructureTab(Static):
 
         Returns
         -------
-            str: Formatted size string (e.g., "1.23 KB", "45.67 MB")
+            str: Formatted size string (e.g., "1.23 KB (1234 bytes)")
         """
         if size_bytes < 1024:
-            return f"{size_bytes} B"
+            return f"{size_bytes} bytes"
         elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.2f} KB"
+            return f"{size_bytes / 1024:.2f} KB ({size_bytes:,} bytes)"
         elif size_bytes < 1024 * 1024 * 1024:
-            return f"{size_bytes / (1024 * 1024):.2f} MB"
+            return f"{size_bytes / (1024 * 1024):.2f} MB ({size_bytes:,} bytes)"
         else:
-            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB ({size_bytes:,} bytes)"
 
     def _render_structure(self) -> Group:
         """
@@ -68,8 +69,11 @@ class StructureTab(Static):
         file_info.append(file_size_str)
 
         # Header section
+        header_text = Text()
+        header_text.append("Magic Number: PAR1\n", style="yellow")
+        header_text.append("Size: 4 bytes")
         header_panel = Panel(
-            Text("Magic Number: PAR1", style="yellow"),
+            header_text,
             title="Header",
             border_style="yellow",
         )
@@ -80,31 +84,116 @@ class StructureTab(Static):
             rg = self.reader.get_row_group_info(i)
             rg_size_str = self._format_size(rg.total_byte_size)
 
-            rg_text = Text()
-            rg_text.append(f"Rows: {rg.num_rows:,}\n")
-            rg_text.append(f"Size: {rg_size_str}\n")
-            rg_text.append(f"Columns: {rg.num_columns}")
+            # Summary info
+            rg_summary = Text()
+            rg_summary.append(f"Rows: {rg.num_rows:,}\n")
+            rg_summary.append(f"Size: {rg_size_str}\n")
+            rg_summary.append(f"Columns: {rg.num_columns}\n")
+
+            # Create column chunk table
+            max_cols_to_show = 20  # Limit display for files with many columns
+            cols_to_display = min(rg.num_columns, max_cols_to_show)
+
+            # Create a table with 3 columns
+            col_table = Table.grid(padding=(0, 1), expand=True)
+            col_table.add_column(ratio=1)
+            col_table.add_column(ratio=1)
+            col_table.add_column(ratio=1)
+
+            # Build rows of column panels
+            cols_per_row = 3
+            for row_idx in range(0, cols_to_display, cols_per_row):
+                row_panels = []
+                for col_offset in range(cols_per_row):
+                    col_idx = row_idx + col_offset
+                    if col_idx < cols_to_display:
+                        col = rg.column(col_idx)
+                        col_size_str = self._format_size(col.total_compressed_size)
+                        col_name = col.path_in_schema
+
+                        col_text = Text()
+                        col_text.append(f"Size: {col_size_str}\n", style="dim")
+                        col_text.append(f"Type: {col.physical_type}", style="dim")
+
+                        col_panel = Panel(
+                            col_text,
+                            title=f"[cyan]{col_name}[/cyan]",
+                            border_style="dim",
+                            padding=(0, 1),
+                        )
+                        row_panels.append(col_panel)
+                    else:
+                        # Empty panel for alignment
+                        row_panels.append(Panel("", border_style="dim", padding=(0, 1)))
+
+                col_table.add_row(*row_panels)
+
+            # If too many columns, add note
+            if rg.num_columns > max_cols_to_show:
+                remaining_text = Text()
+                remaining_text.append(
+                    f"... and {rg.num_columns - max_cols_to_show} more columns",
+                    style="dim italic",
+                )
+                col_table.add_row(Panel(remaining_text, border_style="dim"), "", "")
+
+            # Combine summary and column table
+            rg_content = Group(rg_summary, Text(), col_table)
 
             panel = Panel(
-                rg_text, title=f"[green]Row Group {i}[/green]", border_style="green"
+                rg_content, title=f"[green]Row Group {i}[/green]", border_style="green"
             )
             row_group_panels.append(panel)
 
+        # Page indexes section (between row groups and footer)
+        page_index_size = self.reader.page_index_size
+        page_index_panels = []
+        if page_index_size > 0:
+            page_index_size_str = self._format_size(page_index_size)
+
+            # Column Index panel
+            col_index_text = Text()
+            col_index_text.append("Per-page statistics for filtering\n", style="dim")
+            col_index_text.append(f"Combined size: {page_index_size_str}", style="dim")
+            col_index_panel = Panel(
+                col_index_text,
+                title="[magenta]Column Index[/magenta]",
+                border_style="magenta",
+            )
+            page_index_panels.append(col_index_panel)
+
+            # Offset Index panel
+            offset_index_text = Text()
+            offset_index_text.append("Page locations for random access\n", style="dim")
+            offset_index_text.append("(included in combined size above)", style="dim")
+            offset_index_panel = Panel(
+                offset_index_text,
+                title="[magenta]Offset Index[/magenta]",
+                border_style="magenta",
+            )
+            page_index_panels.append(offset_index_panel)
+
         # Footer metadata
         metadata_size_str = self._format_size(self.reader.metadata_size)
+
         footer_text = Text()
         footer_text.append(f"Total Rows: {self.reader.num_rows:,}\n")
         footer_text.append(f"Row Groups: {self.reader.num_row_groups}\n")
-        footer_text.append(f"Metadata Size: {metadata_size_str}\n\n")
+        footer_text.append(f"Metadata: {metadata_size_str}\n")
+        footer_text.append("Footer Size Field: 4 bytes\n")
         footer_text.append("Magic Number: PAR1", style="yellow")
+        footer_text.append(" (4 bytes)")
 
         footer_panel = Panel(
-            footer_text, title="[blue]Footer (Metadata)[/blue]", border_style="blue"
+            footer_text, title="[blue]Footer[/blue]", border_style="blue"
         )
 
         # Combine all sections
         sections: list[Text | Panel] = [file_info, Text(), header_panel, Text()]
         sections.extend(row_group_panels)
+        if page_index_panels:
+            sections.append(Text())
+            sections.extend(page_index_panels)
         sections.extend([Text(), footer_panel])
 
         return Group(*sections)
