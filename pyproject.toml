@@ -30,6 +30,16 @@ Homepage = "https://github.com/raulcd/datanomy"
 Repository = "https://github.com/raulcd/datanomy"
 Issues = "https://github.com/raulcd/datanomy/issues"
 
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["pyarrow.*"]
+ignore_missing_imports = true
+
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]
 build-backend = "uv_build"
