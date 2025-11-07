@@ -103,7 +103,7 @@ class StructureTab(Static):
             # Build rows of column panels
             cols_per_row = 3
             for row_idx in range(0, cols_to_display, cols_per_row):
-                row_panels = []
+                row_panels: list[Panel | Text] = []
                 for col_offset in range(cols_per_row):
                     col_idx = row_idx + col_offset
                     if col_idx < cols_to_display:
@@ -123,8 +123,8 @@ class StructureTab(Static):
                         )
                         row_panels.append(col_panel)
                     else:
-                        # Empty panel for alignment
-                        row_panels.append(Panel("", border_style="dim", padding=(0, 1)))
+                        # Empty space for alignment (no visible border)
+                        row_panels.append(Text(""))
 
                 col_table.add_row(*row_panels)
 
