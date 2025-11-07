@@ -84,12 +84,15 @@ class StructureTab(Static):
             rg = self.reader.get_row_group_info(i)
 
             # Calculate compressed and uncompressed sizes
-            compressed_sum = sum(rg.column(j).total_compressed_size for j in range(rg.num_columns))
+            compressed_sum = sum(
+                rg.column(j).total_compressed_size for j in range(rg.num_columns)
+            )
             uncompressed_sum = rg.total_byte_size  # This is the uncompressed size
 
             # Check if any column is compressed
             has_compression = any(
-                rg.column(j).compression != "UNCOMPRESSED" for j in range(rg.num_columns)
+                rg.column(j).compression != "UNCOMPRESSED"
+                for j in range(rg.num_columns)
             )
 
             compressed_str = self._format_size(compressed_sum)
@@ -104,7 +107,10 @@ class StructureTab(Static):
                 # Calculate compression ratio
                 if uncompressed_sum > 0:
                     compression_pct = (1 - compressed_sum / uncompressed_sum) * 100
-                    rg_summary.append(f"Compression: {compression_pct:.1f}%\n", style="green" if compression_pct > 0 else "yellow")
+                    rg_summary.append(
+                        f"Compression: {compression_pct:.1f}%\n",
+                        style="green" if compression_pct > 0 else "yellow",
+                    )
             else:
                 rg_summary.append(f"Size: {compressed_str}\n")
             rg_summary.append(f"Columns: {rg.num_columns}\n")
@@ -127,22 +133,41 @@ class StructureTab(Static):
                     col_idx = row_idx + col_offset
                     if col_idx < cols_to_display:
                         col = rg.column(col_idx)
-                        col_compressed_str = self._format_size(col.total_compressed_size)
+                        col_compressed_str = self._format_size(
+                            col.total_compressed_size
+                        )
                         col_name = col.path_in_schema
                         is_compressed = col.compression != "UNCOMPRESSED"
 
                         col_text = Text()
                         if is_compressed:
-                            col_uncompressed_str = self._format_size(col.total_uncompressed_size)
-                            col_text.append(f"Compressed: {col_compressed_str}\n", style="dim")
-                            col_text.append(f"Uncompressed: {col_uncompressed_str}\n", style="dim")
+                            col_uncompressed_str = self._format_size(
+                                col.total_uncompressed_size
+                            )
+                            col_text.append(
+                                f"Compressed: {col_compressed_str}\n", style="dim"
+                            )
+                            col_text.append(
+                                f"Uncompressed: {col_uncompressed_str}\n", style="dim"
+                            )
                             # Calculate compression ratio for this column
                             if col.total_uncompressed_size > 0:
-                                col_compression_pct = (1 - col.total_compressed_size / col.total_uncompressed_size) * 100
-                                ratio_style = "green" if col_compression_pct > 0 else "yellow"
-                                col_text.append(f"Ratio: {col_compression_pct:.1f}%\n", style=ratio_style)
+                                col_compression_pct = (
+                                    1
+                                    - col.total_compressed_size
+                                    / col.total_uncompressed_size
+                                ) * 100
+                                ratio_style = (
+                                    "green" if col_compression_pct > 0 else "yellow"
+                                )
+                                col_text.append(
+                                    f"Ratio: {col_compression_pct:.1f}%\n",
+                                    style=ratio_style,
+                                )
                         else:
-                            col_text.append(f"Size: {col_compressed_str}\n", style="dim")
+                            col_text.append(
+                                f"Size: {col_compressed_str}\n", style="dim"
+                            )
                         col_text.append(f"Codec: {col.compression}\n", style="dim")
                         col_text.append(f"Type: {col.physical_type}", style="dim")
 
@@ -211,7 +236,9 @@ class StructureTab(Static):
             # Only show panels for indexes that are actually present
             if has_col_index:
                 col_index_text = Text()
-                col_index_text.append("Per-page statistics for filtering\n\n", style="cyan")
+                col_index_text.append(
+                    "Per-page statistics for filtering\n\n", style="cyan"
+                )
                 col_index_text.append("Contains:\n", style="bold")
 
                 # Only list statistics that are actually present
@@ -232,7 +259,9 @@ class StructureTab(Static):
 
             if has_off_index:
                 offset_index_text = Text()
-                offset_index_text.append("Page locations for random access\n\n", style="cyan")
+                offset_index_text.append(
+                    "Page locations for random access\n\n", style="cyan"
+                )
                 offset_index_text.append("Contains:\n", style="bold")
                 offset_index_text.append("• Page file offsets\n", style="dim")
                 offset_index_text.append("• compressed_page_size\n", style="dim")
@@ -247,7 +276,9 @@ class StructureTab(Static):
             # Add total size info if we have both indexes
             if has_col_index and has_off_index:
                 total_text = Text()
-                total_text.append(f"Total page indexes: {page_index_size_str}", style="dim")
+                total_text.append(
+                    f"Total page indexes: {page_index_size_str}", style="dim"
+                )
                 page_index_panels.append(total_text)
 
         # Footer metadata
