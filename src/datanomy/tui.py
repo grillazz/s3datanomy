@@ -416,7 +416,9 @@ class SchemaTab(Static):
         schema_table.add_column(ratio=1)
 
         # Calculate total sizes per column across all row groups
-        column_sizes: dict[int, tuple[int, int]] = {}  # col_idx -> (compressed, uncompressed)
+        column_sizes: dict[
+            int, tuple[int, int]
+        ] = {}  # col_idx -> (compressed, uncompressed)
         for rg_idx in range(self.reader.num_row_groups):
             rg = self.reader.get_row_group_info(rg_idx)
             for col_idx in range(rg.num_columns):
@@ -448,18 +450,28 @@ class SchemaTab(Static):
                         compressed, uncompressed = column_sizes[col_idx]
                         if compressed != uncompressed:
                             col_text.append("Compressed: ", style="bold")
-                            col_text.append(f"{self._format_size(compressed)}\n", style="dim")
+                            col_text.append(
+                                f"{self._format_size(compressed)}\n", style="dim"
+                            )
                             col_text.append("Uncompressed: ", style="bold")
-                            col_text.append(f"{self._format_size(uncompressed)}\n", style="dim")
+                            col_text.append(
+                                f"{self._format_size(uncompressed)}\n", style="dim"
+                            )
                             # Calculate compression ratio
                             if uncompressed > 0:
                                 compression_pct = (1 - compressed / uncompressed) * 100
-                                ratio_style = "green" if compression_pct > 0 else "yellow"
+                                ratio_style = (
+                                    "green" if compression_pct > 0 else "yellow"
+                                )
                                 col_text.append("Compression: ", style="bold")
-                                col_text.append(f"{compression_pct:.1f}%\n", style=ratio_style)
+                                col_text.append(
+                                    f"{compression_pct:.1f}%\n", style=ratio_style
+                                )
                         else:
                             col_text.append("Size: ", style="bold")
-                            col_text.append(f"{self._format_size(compressed)}\n", style="dim")
+                            col_text.append(
+                                f"{self._format_size(compressed)}\n", style="dim"
+                            )
                         col_text.append("\n")
 
                     # Physical type
@@ -525,6 +537,114 @@ class SchemaTab(Static):
         return Group(schema_structure_panel, Text(), column_details_panel)
 
 
+class MetadataTab(Static):
+    """Display Parquet file metadata."""
+
+    def __init__(self, reader: ParquetReader) -> None:
+        """Initialize the metadata tab."""
+        super().__init__()
+        self.reader = reader
+
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """Format size in bytes to human-readable format."""
+        if size_bytes < 1024:
+            return f"{size_bytes} bytes"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.2f} KB ({size_bytes:,} bytes)"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.2f} MB ({size_bytes:,} bytes)"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB ({size_bytes:,} bytes)"
+
+    def compose(self) -> ComposeResult:
+        """Compose the metadata view."""
+        yield Static(self._render_metadata(), id="metadata-content")
+
+    def _render_metadata(self) -> Group:
+        """Render file metadata."""
+        metadata = self.reader.metadata
+
+        # File information section
+        file_info = Text()
+        file_info.append("Created by: ", style="bold")
+        file_info.append(f"{metadata.created_by}\n", style="cyan")
+        file_info.append("Format version: ", style="bold")
+        file_info.append(f"{metadata.format_version}\n", style="cyan")
+        file_info.append("Metadata size: ", style="bold")
+        file_info.append(
+            f"{self._format_size(metadata.serialized_size)}\n", style="cyan"
+        )
+        file_info.append("\n")
+
+        file_info.append("Total rows: ", style="bold")
+        file_info.append(f"{metadata.num_rows:,}\n", style="green")
+        file_info.append("Total columns: ", style="bold")
+        file_info.append(f"{metadata.num_columns}\n", style="green")
+        file_info.append("Row groups: ", style="bold")
+        file_info.append(f"{metadata.num_row_groups}\n", style="green")
+
+        # Calculate total compressed and uncompressed sizes
+        total_compressed = 0
+        total_uncompressed = 0
+        for rg_idx in range(metadata.num_row_groups):
+            rg = metadata.row_group(rg_idx)
+            for col_idx in range(rg.num_columns):
+                col = rg.column(col_idx)
+                total_compressed += col.total_compressed_size
+                total_uncompressed += col.total_uncompressed_size
+
+        file_info.append("\n")
+        file_info.append("Total compressed size: ", style="bold")
+        file_info.append(f"{self._format_size(total_compressed)}\n", style="cyan")
+        file_info.append("Total uncompressed size: ", style="bold")
+        file_info.append(f"{self._format_size(total_uncompressed)}\n", style="cyan")
+
+        if total_uncompressed > 0:
+            compression_pct = (1 - total_compressed / total_uncompressed) * 100
+            ratio_style = "green" if compression_pct > 0 else "yellow"
+            file_info.append("Compression ratio: ", style="bold")
+            file_info.append(f"{compression_pct:.1f}%\n", style=ratio_style)
+
+        file_info_panel = Panel(
+            file_info,
+            title="[cyan]File Information[/cyan]",
+            border_style="cyan",
+        )
+
+        # Custom metadata section
+        custom_metadata = Text()
+        if metadata.metadata:
+            for key, value in metadata.metadata.items():
+                # Keys and values are bytes
+                key_str = key.decode("utf-8") if isinstance(key, bytes) else key
+                value_str = value.decode("utf-8") if isinstance(value, bytes) else value
+
+                custom_metadata.append(f"{key_str}:\n", style="bold yellow")
+                # For long values like ARROW:schema, just show truncated
+                if len(value_str) > 200:
+                    custom_metadata.append(
+                        f"  {value_str[:200]}...\n", style="dim white"
+                    )
+                    custom_metadata.append(
+                        f"  (truncated, {len(value_str)} bytes total)\n",
+                        style="italic magenta",
+                    )
+                else:
+                    custom_metadata.append(f"  {value_str}\n", style="white")
+                custom_metadata.append("\n")
+        else:
+            custom_metadata.append("No custom metadata found", style="dim yellow")
+
+        custom_metadata_panel = Panel(
+            custom_metadata,
+            title="[cyan]Custom Metadata[/cyan]",
+            border_style="cyan",
+        )
+
+        return Group(file_info_panel, Text(), custom_metadata_panel)
+
+
 class DatanomyApp(App):
     """A Textual app to explore Parquet file anatomy."""
 
@@ -572,7 +692,7 @@ class DatanomyApp(App):
             with TabPane("Data", id="tab-data"):
                 yield Static("[dim]Data preview - Coming soon[/dim]")
             with TabPane("Metadata", id="tab-metadata"):
-                yield Static("[dim]File metadata - Coming soon[/dim]")
+                yield ScrollableContainer(MetadataTab(self.reader))
             with TabPane("Stats", id="tab-stats"):
                 yield Static("[dim]Column statistics - Coming soon[/dim]")
         yield Footer()
