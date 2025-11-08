@@ -233,53 +233,84 @@ class StructureTab(Static):
                         if stats.has_distinct_count:
                             has_distinct_count = True
 
-            # Only show panels for indexes that are actually present
-            if has_col_index:
-                col_index_text = Text()
-                col_index_text.append(
-                    "Per-page statistics for filtering\n\n", style="cyan"
-                )
-                col_index_text.append("Contains:\n", style="bold")
+            # Create a single parent panel if any indexes exist
+            if has_col_index or has_off_index:
+                page_index_content: list[Text | Table] = []
 
-                # Only list statistics that are actually present
-                if has_min_max:
-                    col_index_text.append("• min/max values per page\n", style="dim")
-                if has_null_count:
-                    col_index_text.append("• null_count per page\n", style="dim")
-                if has_distinct_count:
-                    col_index_text.append("• distinct_count per page\n", style="dim")
+                # Total size at the top
+                size_text = Text()
+                size_text.append(f"Total Size: {page_index_size_str}", style="bold")
+                page_index_content.append(size_text)
+                page_index_content.append(Text())  # Blank line
 
-                col_index_text.append("• Enables page-level pruning", style="dim")
-                col_index_panel = Panel(
-                    col_index_text,
-                    title="[magenta]Column Index[/magenta]",
+                # Create a table for the index sub-panels
+                index_table = Table.grid(padding=(0, 1), expand=True)
+                index_table.add_column(ratio=1)
+                index_table.add_column(ratio=1)
+
+                index_panels: list[Panel | Text] = []
+
+                # Column Index sub-panel
+                if has_col_index:
+                    col_index_text = Text()
+                    col_index_text.append(
+                        "Per-page statistics for filtering\n\n", style="cyan"
+                    )
+                    col_index_text.append("Contains:\n", style="bold")
+
+                    # Only list statistics that are actually present
+                    if has_min_max:
+                        col_index_text.append(
+                            "• min/max values per page\n", style="dim"
+                        )
+                    if has_null_count:
+                        col_index_text.append("• null_count per page\n", style="dim")
+                    if has_distinct_count:
+                        col_index_text.append(
+                            "• distinct_count per page\n", style="dim"
+                        )
+
+                    col_index_text.append("• Enables page-level pruning", style="dim")
+                    col_index_panel = Panel(
+                        col_index_text,
+                        title="[cyan]Column Index[/cyan]",
+                        border_style="dim",
+                        padding=(0, 1),
+                    )
+                    index_panels.append(col_index_panel)
+                else:
+                    index_panels.append(Text(""))
+
+                # Offset Index sub-panel
+                if has_off_index:
+                    offset_index_text = Text()
+                    offset_index_text.append(
+                        "Page locations for random access\n\n", style="cyan"
+                    )
+                    offset_index_text.append("Contains:\n", style="bold")
+                    offset_index_text.append("• Page file offsets\n", style="dim")
+                    offset_index_text.append("• compressed_page_size\n", style="dim")
+                    offset_index_text.append("• first_row_index per page", style="dim")
+                    offset_index_panel = Panel(
+                        offset_index_text,
+                        title="[cyan]Offset Index[/cyan]",
+                        border_style="dim",
+                        padding=(0, 1),
+                    )
+                    index_panels.append(offset_index_panel)
+                else:
+                    index_panels.append(Text(""))
+
+                index_table.add_row(*index_panels)
+                page_index_content.append(index_table)
+
+                # Create the parent panel
+                page_index_panel = Panel(
+                    Group(*page_index_content),
+                    title="[magenta]Page Indexes[/magenta]",
                     border_style="magenta",
                 )
-                page_index_panels.append(col_index_panel)
-
-            if has_off_index:
-                offset_index_text = Text()
-                offset_index_text.append(
-                    "Page locations for random access\n\n", style="cyan"
-                )
-                offset_index_text.append("Contains:\n", style="bold")
-                offset_index_text.append("• Page file offsets\n", style="dim")
-                offset_index_text.append("• compressed_page_size\n", style="dim")
-                offset_index_text.append("• first_row_index per page", style="dim")
-                offset_index_panel = Panel(
-                    offset_index_text,
-                    title="[magenta]Offset Index[/magenta]",
-                    border_style="magenta",
-                )
-                page_index_panels.append(offset_index_panel)
-
-            # Add total size info if we have both indexes
-            if has_col_index and has_off_index:
-                total_text = Text()
-                total_text.append(
-                    f"Total page indexes: {page_index_size_str}", style="dim"
-                )
-                page_index_panels.append(total_text)
+                page_index_panels.append(page_index_panel)
 
         # Footer metadata
         metadata_size_str = self._format_size(self.reader.metadata_size)
