@@ -356,6 +356,28 @@ class SchemaTab(Static):
         """Render the schema view."""
         yield Static(self._render_schema(), id="schema-content")
 
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """
+        Format size in bytes to human-readable format with byte count.
+
+        Parameters
+        ----------
+            size_bytes: Size in bytes
+
+        Returns
+        -------
+            str: Formatted size string (e.g., "1.23 KB (1234 bytes)")
+        """
+        if size_bytes < 1024:
+            return f"{size_bytes} bytes"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.2f} KB ({size_bytes:,} bytes)"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.2f} MB ({size_bytes:,} bytes)"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB ({size_bytes:,} bytes)"
+
     def _render_schema(self) -> Group:
         """
         Render schema information.
@@ -393,6 +415,20 @@ class SchemaTab(Static):
         schema_table.add_column(ratio=1)
         schema_table.add_column(ratio=1)
 
+        # Calculate total sizes per column across all row groups
+        column_sizes: dict[int, tuple[int, int]] = {}  # col_idx -> (compressed, uncompressed)
+        for rg_idx in range(self.reader.num_row_groups):
+            rg = self.reader.get_row_group_info(rg_idx)
+            for col_idx in range(rg.num_columns):
+                col_chunk = rg.column(col_idx)
+                if col_idx not in column_sizes:
+                    column_sizes[col_idx] = (0, 0)
+                compressed, uncompressed = column_sizes[col_idx]
+                column_sizes[col_idx] = (
+                    compressed + col_chunk.total_compressed_size,
+                    uncompressed + col_chunk.total_uncompressed_size,
+                )
+
         # Build column panels
         cols_per_row = 3
         for row_idx in range(0, num_columns, cols_per_row):
@@ -406,6 +442,25 @@ class SchemaTab(Static):
 
                     # Build column info
                     col_text = Text()
+
+                    # Show total size
+                    if col_idx in column_sizes:
+                        compressed, uncompressed = column_sizes[col_idx]
+                        if compressed != uncompressed:
+                            col_text.append("Compressed: ", style="bold")
+                            col_text.append(f"{self._format_size(compressed)}\n", style="dim")
+                            col_text.append("Uncompressed: ", style="bold")
+                            col_text.append(f"{self._format_size(uncompressed)}\n", style="dim")
+                            # Calculate compression ratio
+                            if uncompressed > 0:
+                                compression_pct = (1 - compressed / uncompressed) * 100
+                                ratio_style = "green" if compression_pct > 0 else "yellow"
+                                col_text.append("Compression: ", style="bold")
+                                col_text.append(f"{compression_pct:.1f}%\n", style=ratio_style)
+                        else:
+                            col_text.append("Size: ", style="bold")
+                            col_text.append(f"{self._format_size(compressed)}\n", style="dim")
+                        col_text.append("\n")
 
                     # Physical type
                     col_text.append("Physical Type: ", style="bold")
