@@ -376,9 +376,39 @@ class SchemaTab(Static):
         )
 
         # Parquet Schema
-        parquet_schema_str = str(self.reader.schema_parquet)
+        parquet_schema = self.reader.schema_parquet
+        parquet_lines = []
+
+        for i, name in enumerate(parquet_schema.names, 1):
+            col = parquet_schema.column(i - 1)
+
+            # Build the column line
+            line = Text()
+            line.append(f"{i:3d}. ", style="dim")
+            line.append(f"{name}", style="green")
+            line.append(f": {col.physical_type}", style="yellow")
+
+            # Add logical type if present
+            if col.logical_type is not None:
+                line.append(f" ({col.logical_type})", style="cyan")
+
+            # Add repetition info
+            repetition = ""
+            if col.max_definition_level == 0:
+                repetition = "REQUIRED"
+            elif col.max_definition_level == 1 and col.max_repetition_level == 0:
+                repetition = "OPTIONAL"
+            elif col.max_repetition_level > 0:
+                repetition = "REPEATED"
+
+            if repetition:
+                line.append(f" [{repetition}]", style="dim")
+
+            parquet_lines.append(line)
+
+        parquet_content = Group(*parquet_lines)
         parquet_panel = Panel(
-            Text(parquet_schema_str),
+            parquet_content,
             title="[yellow]Parquet Schema[/yellow]",
             border_style="yellow",
         )
