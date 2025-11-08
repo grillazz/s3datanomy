@@ -362,58 +362,112 @@ class SchemaTab(Static):
 
         Returns
         -------
-            Group: Rich renderable showing both Arrow and Parquet schemas
+            Group: Rich renderable showing Parquet schema as column panels and structure
         """
-        # Arrow Schema
-        arrow_schema = self.reader.schema_arrow
-        arrow_lines = []
-        for i, field in enumerate(arrow_schema, 1):
-            arrow_lines.append(f"{i:3d}. [green]{field.name}[/green]: {field.type}")
+        parquet_schema = self.reader.schema_parquet
+        num_columns = len(parquet_schema.names)
 
-        arrow_text = Text("\n".join(arrow_lines))
-        arrow_panel = Panel(
-            arrow_text, title="[cyan]Arrow Schema[/cyan]", border_style="cyan"
+        # Schema structure (Thrift-like representation)
+        schema_str = str(parquet_schema)
+        # Remove the first line (Python object repr)
+        schema_lines = schema_str.split("\n")
+        clean_schema = (
+            "\n".join(schema_lines[1:]) if len(schema_lines) > 1 else schema_str
         )
 
-        # Parquet Schema
-        parquet_schema = self.reader.schema_parquet
-        parquet_lines = []
+        # Remove noisy field_id=-1 annotations
+        clean_schema = clean_schema.replace(" field_id=-1", "")
 
-        for i, name in enumerate(parquet_schema.names, 1):
-            col = parquet_schema.column(i - 1)
+        # Remove trailing empty lines
+        clean_schema = clean_schema.rstrip()
 
-            # Build the column line
-            line = Text()
-            line.append(f"{i:3d}. ", style="dim")
-            line.append(f"{name}", style="green")
-            line.append(f": {col.physical_type}", style="yellow")
-
-            # Add logical type if present
-            if col.logical_type is not None:
-                line.append(f" ({col.logical_type})", style="cyan")
-
-            # Add repetition info
-            repetition = ""
-            if col.max_definition_level == 0:
-                repetition = "REQUIRED"
-            elif col.max_definition_level == 1 and col.max_repetition_level == 0:
-                repetition = "OPTIONAL"
-            elif col.max_repetition_level > 0:
-                repetition = "REPEATED"
-
-            if repetition:
-                line.append(f" [{repetition}]", style="dim")
-
-            parquet_lines.append(line)
-
-        parquet_content = Group(*parquet_lines)
-        parquet_panel = Panel(
-            parquet_content,
-            title="[yellow]Parquet Schema[/yellow]",
+        schema_structure_panel = Panel(
+            Text(clean_schema, style="dim"),
+            title="[yellow]Parquet Schema Structure[/yellow]",
             border_style="yellow",
         )
 
-        return Group(arrow_panel, Text(), parquet_panel)
+        # Create a table grid for column panels (3 columns wide)
+        schema_table = Table.grid(padding=(0, 1), expand=True)
+        schema_table.add_column(ratio=1)
+        schema_table.add_column(ratio=1)
+        schema_table.add_column(ratio=1)
+
+        # Build column panels
+        cols_per_row = 3
+        for row_idx in range(0, num_columns, cols_per_row):
+            row_panels: list[Panel | Text] = []
+
+            for col_offset in range(cols_per_row):
+                col_idx = row_idx + col_offset
+                if col_idx < num_columns:
+                    col = parquet_schema.column(col_idx)
+                    name = parquet_schema.names[col_idx]
+
+                    # Build column info
+                    col_text = Text()
+
+                    # Physical type
+                    col_text.append("Physical Type: ", style="bold")
+                    col_text.append(f"{col.physical_type}\n", style="yellow")
+
+                    # Logical type (if present and meaningful)
+                    if col.logical_type is not None and str(col.logical_type) != "None":
+                        col_text.append("Logical Type: ", style="bold")
+                        col_text.append(f"{col.logical_type}\n", style="cyan")
+                    else:
+                        # Add blank line for alignment
+                        col_text.append("\n")
+
+                    col_text.append("\n")
+
+                    # Repetition level
+                    col_text.append("Max Repetition Level: ", style="bold")
+                    col_text.append(f"{col.max_repetition_level}\n", style="dim")
+                    if col.max_repetition_level == 0:
+                        col_text.append(
+                            "  → Not repeated (flat value)\n", style="dim italic"
+                        )
+                    else:
+                        col_text.append(
+                            "  → Repeated (list/nested lists)\n", style="dim italic"
+                        )
+
+                    # Definition level
+                    col_text.append("Max Definition Level: ", style="bold")
+                    col_text.append(f"{col.max_definition_level}\n", style="dim")
+
+                    # Explain what definition level means
+                    if col.max_definition_level == 0:
+                        col_text.append(
+                            "  → REQUIRED (no nulls allowed)\n", style="dim italic"
+                        )
+                    else:
+                        col_text.append(
+                            "  → OPTIONAL (value can be null)\n", style="dim italic"
+                        )
+
+                    col_panel = Panel(
+                        col_text,
+                        title=f"[green]{name}[/green]",
+                        border_style="cyan",
+                        padding=(0, 1),
+                    )
+                    row_panels.append(col_panel)
+                else:
+                    # Empty space for alignment
+                    row_panels.append(Text(""))
+
+            schema_table.add_row(*row_panels)
+
+        # Column details panel
+        column_details_panel = Panel(
+            schema_table,
+            title="[cyan]Column Details[/cyan]",
+            border_style="cyan",
+        )
+
+        return Group(schema_structure_panel, Text(), column_details_panel)
 
 
 class DatanomyApp(App):
