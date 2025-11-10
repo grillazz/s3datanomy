@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from datanomy.reader import ParquetReader
+from datanomy.parquet.reader import ParquetReader
 from datanomy.tui import DatanomyApp
 
 

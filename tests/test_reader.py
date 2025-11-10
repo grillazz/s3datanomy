@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from datanomy.reader import ParquetReader
+from datanomy.parquet.reader import ParquetReader
 
 
 def test_reader_simple_file(simple_parquet: Path) -> None:
