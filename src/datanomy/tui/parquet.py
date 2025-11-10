@@ -7,16 +7,17 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.widgets import Static
 
-from datanomy.parquet.reader import ParquetReader
+from datanomy.reader.parquet import ParquetReader
+from datanomy.tui.common import create_column_grid
 from datanomy.utils import format_size
 
 
-class StructureTab(Static):
-    """Widget displaying Parquet file structure."""
+class BaseParquetTab(Static):
+    """Base class for Parquet-specific tab widgets."""
 
     def __init__(self, reader: ParquetReader) -> None:
         """
-        Initialize the structure view.
+        Initialize the tab view.
 
         Parameters
         ----------
@@ -26,10 +27,25 @@ class StructureTab(Static):
         self.reader = reader
 
     def compose(self) -> ComposeResult:
-        """Render the structure view."""
-        yield Static(self._render_structure(), id="structure-content")
+        """Render the tab view."""
+        content_id = f"{self.__class__.__name__.lower().replace('tab', '')}-content"
+        yield Static(self.render_tab_content(), id=content_id)
 
-    def _render_structure(self) -> Group:
+    def render_tab_content(self) -> Group:
+        """
+        Render the tab content. Must be implemented by subclasses.
+
+        Returns
+        -------
+            Group: Rich renderable content
+        """
+        raise NotImplementedError("Subclasses must implement render_tab_content()")
+
+
+class StructureTab(BaseParquetTab):
+    """Widget displaying Parquet file structure."""
+
+    def render_tab_content(self) -> Group:
         """
         Render the Parquet file structure diagram.
 
@@ -98,10 +114,7 @@ class StructureTab(Static):
             cols_to_display = min(rg.num_columns, max_cols_to_show)
 
             # Create a table with 3 columns
-            col_table = Table.grid(padding=(0, 1), expand=True)
-            col_table.add_column(ratio=1)
-            col_table.add_column(ratio=1)
-            col_table.add_column(ratio=1)
+            col_table = create_column_grid(num_columns=3)
 
             # Build rows of column panels
             cols_per_row = 3
@@ -219,7 +232,7 @@ class StructureTab(Static):
                 page_index_content.append(size_text)
                 page_index_content.append(Text())  # Blank line
 
-                # Create a table for the index sub-panels
+                # Create a table for the index sub-panels (2 columns for indexes)
                 index_table = Table.grid(padding=(0, 1), expand=True)
                 index_table.add_column(ratio=1)
                 index_table.add_column(ratio=1)
@@ -314,25 +327,10 @@ class StructureTab(Static):
         return Group(*sections)
 
 
-class SchemaTab(Static):
+class SchemaTab(BaseParquetTab):
     """Widget displaying schema information."""
 
-    def __init__(self, reader: ParquetReader) -> None:
-        """
-        Initialize the schema view.
-
-        Parameters
-        ----------
-            reader: ParquetReader instance
-        """
-        super().__init__()
-        self.reader = reader
-
-    def compose(self) -> ComposeResult:
-        """Render the schema view."""
-        yield Static(self._render_schema(), id="schema-content")
-
-    def _render_schema(self) -> Group:
+    def render_tab_content(self) -> Group:
         """
         Render schema information.
 
@@ -364,10 +362,7 @@ class SchemaTab(Static):
         )
 
         # Create a table grid for column panels (3 columns wide)
-        schema_table = Table.grid(padding=(0, 1), expand=True)
-        schema_table.add_column(ratio=1)
-        schema_table.add_column(ratio=1)
-        schema_table.add_column(ratio=1)
+        schema_table = create_column_grid(num_columns=3)
 
         # Calculate total sizes per column across all row groups
         column_sizes: dict[
@@ -487,25 +482,10 @@ class SchemaTab(Static):
         return Group(schema_structure_panel, Text(), column_details_panel)
 
 
-class StatsTab(Static):
+class StatsTab(BaseParquetTab):
     """Widget displaying column statistics."""
 
-    def __init__(self, reader: ParquetReader) -> None:
-        """
-        Initialize the stats view.
-
-        Parameters
-        ----------
-            reader: ParquetReader instance
-        """
-        super().__init__()
-        self.reader = reader
-
-    def compose(self) -> ComposeResult:
-        """Render the stats view."""
-        yield Static(self._render_stats(), id="stats-content")
-
-    def _render_stats(self) -> Group:
+    def render_tab_content(self) -> Group:
         """
         Render column statistics.
 
@@ -539,10 +519,7 @@ class StatsTab(Static):
             return Group(Panel(no_stats_text, title="[yellow]Statistics[/yellow]"))
 
         # Create a table grid for column statistics (3 columns wide)
-        stats_table = Table.grid(padding=(0, 1), expand=True)
-        stats_table.add_column(ratio=1, min_width=20)
-        stats_table.add_column(ratio=1, min_width=20)
-        stats_table.add_column(ratio=1, min_width=20)
+        stats_table = create_column_grid(num_columns=3)
 
         # Build statistics panels per column
         cols_per_row = 3
@@ -645,7 +622,7 @@ class StatsTab(Static):
         return Group(stats_table)
 
 
-class DataTab(Static):
+class DataTab(BaseParquetTab):
     """Widget displaying data preview."""
 
     def __init__(self, reader: ParquetReader, num_rows: int = 50) -> None:
@@ -657,13 +634,8 @@ class DataTab(Static):
             reader: ParquetReader instance
             num_rows: Number of rows to display (default: 50)
         """
-        super().__init__()
-        self.reader = reader
+        super().__init__(reader)
         self.num_rows = num_rows
-
-    def compose(self) -> ComposeResult:
-        """Render the data view."""
-        yield Static(self._render_data(), id="data-content")
 
     @staticmethod
     def _format_value(value: Any, max_length: int = 50) -> str:
@@ -687,7 +659,7 @@ class DataTab(Static):
             return f"{value_str[: max_length - 3]}..."
         return value_str
 
-    def _render_data(self) -> Group:
+    def render_tab_content(self) -> Group:
         """
         Render data preview table.
 
@@ -755,19 +727,10 @@ class DataTab(Static):
         return Group(header_text, Text(), table_panel)
 
 
-class MetadataTab(Static):
+class MetadataTab(BaseParquetTab):
     """Display Parquet file metadata."""
 
-    def __init__(self, reader: ParquetReader) -> None:
-        """Initialize the metadata tab."""
-        super().__init__()
-        self.reader = reader
-
-    def compose(self) -> ComposeResult:
-        """Compose the metadata view."""
-        yield Static(self._render_metadata(), id="metadata-content")
-
-    def _render_metadata(self) -> Group:
+    def render_tab_content(self) -> Group:
         """Render file metadata."""
         metadata = self.reader.metadata
 

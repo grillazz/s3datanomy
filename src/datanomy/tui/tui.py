@@ -4,8 +4,8 @@ from textual.app import App, ComposeResult
 from textual.containers import ScrollableContainer
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 
-from datanomy.parquet.reader import ParquetReader
-from datanomy.parquet.tui import DataTab, MetadataTab, SchemaTab, StatsTab, StructureTab
+from datanomy.reader.parquet import ParquetReader
+from datanomy.tui.parquet import DataTab, MetadataTab, SchemaTab, StatsTab, StructureTab
 
 
 class DatanomyApp(App):

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import click
 
-from datanomy.parquet.reader import ParquetReader
-from datanomy.tui import DatanomyApp
+from datanomy.reader.parquet import ParquetReader
+from datanomy.tui.tui import DatanomyApp
 
 
 @click.command()

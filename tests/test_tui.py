@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from datanomy.parquet.reader import ParquetReader
-from datanomy.tui import DatanomyApp
+from datanomy.reader.parquet import ParquetReader
+from datanomy.tui.tui import DatanomyApp
 
 
 @pytest.mark.asyncio
