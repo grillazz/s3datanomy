@@ -537,6 +537,164 @@ class SchemaTab(Static):
         return Group(schema_structure_panel, Text(), column_details_panel)
 
 
+class StatsTab(Static):
+    """Widget displaying column statistics."""
+
+    def __init__(self, reader: ParquetReader) -> None:
+        """
+        Initialize the stats view.
+
+        Parameters
+        ----------
+            reader: ParquetReader instance
+        """
+        super().__init__()
+        self.reader = reader
+
+    def compose(self) -> ComposeResult:
+        """Render the stats view."""
+        yield Static(self._render_stats(), id="stats-content")
+
+    def _render_stats(self) -> Group:
+        """
+        Render column statistics.
+
+        Returns
+        -------
+            Group: Rich renderable showing statistics per column
+        """
+        num_columns = self.reader.metadata.num_columns
+
+        # Check if any statistics exist in the file
+        has_any_stats = False
+        for rg_idx in range(self.reader.num_row_groups):
+            rg = self.reader.get_row_group_info(rg_idx)
+            for col_idx in range(rg.num_columns):
+                col = rg.column(col_idx)
+                if col.is_stats_set:
+                    has_any_stats = True
+                    break
+            if has_any_stats:
+                break
+
+        if not has_any_stats:
+            no_stats_text = Text()
+            no_stats_text.append(
+                "No statistics found in this Parquet file.\n\n", style="yellow"
+            )
+            no_stats_text.append(
+                "Statistics can be written during file creation using write options.",
+                style="dim",
+            )
+            return Group(Panel(no_stats_text, title="[yellow]Statistics[/yellow]"))
+
+        # Create a table grid for column statistics (3 columns wide)
+        stats_table = Table.grid(padding=(0, 1), expand=True)
+        stats_table.add_column(ratio=1, min_width=20)
+        stats_table.add_column(ratio=1, min_width=20)
+        stats_table.add_column(ratio=1, min_width=20)
+
+        # Build statistics panels per column
+        cols_per_row = 3
+        for row_idx in range(0, num_columns, cols_per_row):
+            row_panels: list[Panel | Text] = []
+            row_texts: list[Text] = []  # Store texts to calculate max height
+
+            # First pass: build all text content
+            for col_offset in range(cols_per_row):
+                col_idx = row_idx + col_offset
+                if col_idx < num_columns:
+                    col_name = self.reader.schema_parquet.names[col_idx]
+
+                    # Collect statistics from all row groups for this column
+                    col_text = Text()
+                    has_stats_for_col = False
+
+                    for rg_idx in range(self.reader.num_row_groups):
+                        rg = self.reader.get_row_group_info(rg_idx)
+                        col_chunk = rg.column(col_idx)
+
+                        if col_chunk.is_stats_set:
+                            has_stats_for_col = True
+                            stats = col_chunk.statistics
+
+                            # Row group header
+                            if self.reader.num_row_groups > 1:
+                                col_text.append(
+                                    f"Row Group {rg_idx}:\n", style="bold cyan"
+                                )
+
+                            # Number of values (always present when stats are set)
+                            col_text.append("  num_values: ", style="bold")
+                            col_text.append(f"{stats.num_values:,}\n", style="cyan")
+
+                            # Min/Max
+                            if stats.has_min_max:
+                                col_text.append("  min: ", style="bold")
+                                col_text.append(f"{stats.min}\n", style="green")
+                                col_text.append("  max: ", style="bold")
+                                col_text.append(f"{stats.max}\n", style="green")
+
+                            # Null count
+                            if stats.has_null_count:
+                                col_text.append("  null_count: ", style="bold")
+                                col_text.append(
+                                    f"{stats.null_count:,}\n", style="yellow"
+                                )
+
+                            # Distinct count
+                            if stats.has_distinct_count:
+                                col_text.append("  distinct_count: ", style="bold")
+                                col_text.append(
+                                    f"{stats.distinct_count:,}\n", style="magenta"
+                                )
+
+                            # Add spacing between row groups
+                            if rg_idx < self.reader.num_row_groups - 1:
+                                col_text.append("\n")
+
+                    # If no statistics for this column, show message
+                    if not has_stats_for_col:
+                        col_text.append("No statistics available", style="dim yellow")
+
+                    row_texts.append(col_text)
+                else:
+                    row_texts.append(Text(""))
+
+            # Calculate max height (number of lines) in this row
+            max_lines = max(
+                len(str(t).split("\n")) for t in row_texts if str(t).strip()
+            )
+
+            # Second pass: pad texts to equal height and create panels
+            for col_offset in range(cols_per_row):
+                col_idx = row_idx + col_offset
+                if col_idx < num_columns:
+                    col_name = self.reader.schema_parquet.names[col_idx]
+                    col_text = row_texts[col_offset]
+
+                    # Pad with empty lines to match max_lines
+                    current_lines = len(str(col_text).split("\n"))
+                    for _ in range(max_lines - current_lines):
+                        col_text.append("\n")
+
+                    col_panel = Panel(
+                        col_text,
+                        title=f"[green]{col_name}[/green]",
+                        border_style="cyan",
+                        padding=(0, 1),
+                        expand=True,
+                    )
+                    row_panels.append(col_panel)
+                else:
+                    # Empty space for alignment
+                    row_panels.append(Text(""))
+
+            stats_table.add_row(*row_panels)
+
+        return Group(stats_table)
+
+
 class MetadataTab(Static):
     """Display Parquet file metadata."""
 
@@ -657,7 +815,7 @@ class DatanomyApp(App):
         padding: 1;
     }
 
-    #structure-content, #schema-content {
+    #structure-content, #schema-content, #stats-content {
         padding: 1;
     }
     """
@@ -694,5 +852,5 @@ class DatanomyApp(App):
             with TabPane("Metadata", id="tab-metadata"):
                 yield ScrollableContainer(MetadataTab(self.reader))
             with TabPane("Stats", id="tab-stats"):
-                yield Static("[dim]Column statistics - Coming soon[/dim]")
+                yield ScrollableContainer(StatsTab(self.reader))
         yield Footer()
