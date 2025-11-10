@@ -373,19 +373,17 @@ class StructureTab(BaseParquetTab):
 class SchemaTab(BaseParquetTab):
     """Widget displaying schema information."""
 
-    def render_tab_content(self) -> Group:
+    def _schema_structure(self) -> Panel:
         """
-        Render schema information.
+        Create Panel for Parquet schema structure (Thrift-like representation).
 
         Returns
         -------
-            Group: Rich renderable showing Parquet schema as column panels and structure
+            Panel: Rich Panel with schema structure
         """
         parquet_schema = self.reader.schema_parquet
-        num_columns = len(parquet_schema.names)
-
-        # Schema structure (Thrift-like representation)
         schema_str = str(parquet_schema)
+
         # Remove the first line (Python object repr)
         schema_lines = schema_str.split("\n")
         clean_schema = (
@@ -398,19 +396,21 @@ class SchemaTab(BaseParquetTab):
         # Remove trailing empty lines
         clean_schema = clean_schema.rstrip()
 
-        schema_structure_panel = Panel(
+        return Panel(
             Text(clean_schema, style="dim"),
             title="[yellow]Parquet Schema Structure[/yellow]",
             border_style="yellow",
         )
 
-        # Create a table grid for column panels (3 columns wide)
-        schema_table = create_column_grid(num_columns=3)
+    def _calculate_column_sizes(self) -> dict[int, tuple[int, int]]:
+        """
+        Calculate total compressed and uncompressed sizes per column.
 
-        # Calculate total sizes per column across all row groups
-        column_sizes: dict[
-            int, tuple[int, int]
-        ] = {}  # col_idx -> (compressed, uncompressed)
+        Returns
+        -------
+            dict[int, tuple[int, int]]: Mapping of column index to (compressed, uncompressed) sizes
+        """
+        column_sizes: dict[int, tuple[int, int]] = {}
         for rg_idx in range(self.reader.num_row_groups):
             rg = self.reader.get_row_group_info(rg_idx)
             for col_idx in range(rg.num_columns):
@@ -422,6 +422,94 @@ class SchemaTab(BaseParquetTab):
                     compressed + col_chunk.total_compressed_size,
                     uncompressed + col_chunk.total_uncompressed_size,
                 )
+        return column_sizes
+
+    def _build_column_info(
+        self, col: Any, col_idx: int, column_sizes: dict[int, tuple[int, int]]
+    ) -> Text:
+        """
+        Build text content for a single column's information.
+
+        Parameters
+        ----------
+            col: Parquet column schema object
+            col_idx: Column index
+            column_sizes: Dictionary mapping column index to sizes
+
+        Returns
+        -------
+            Text: Rich Text with column information
+        """
+        col_text = Text()
+
+        # Show total size
+        if col_idx in column_sizes:
+            compressed, uncompressed = column_sizes[col_idx]
+            if compressed != uncompressed:
+                col_text.append("Compressed: ", style="bold")
+                col_text.append(f"{format_size(compressed)}\n", style="dim")
+                col_text.append("Uncompressed: ", style="bold")
+                col_text.append(f"{format_size(uncompressed)}\n", style="dim")
+
+                # Calculate compression ratio
+                if uncompressed > 0:
+                    compression_pct = (1 - compressed / uncompressed) * 100
+                    ratio_style = "green" if compression_pct > 0 else "yellow"
+                    col_text.append("Compression: ", style="bold")
+                    col_text.append(f"{compression_pct:.1f}%\n", style=ratio_style)
+            else:
+                col_text.append("Size: ", style="bold")
+                col_text.append(f"{format_size(compressed)}\n", style="dim")
+            col_text.append("\n")
+
+        # Physical type
+        col_text.append("Physical Type: ", style="bold")
+        col_text.append(f"{col.physical_type}\n", style="yellow")
+
+        # Logical type (if present and meaningful)
+        if col.logical_type is not None and str(col.logical_type) != "None":
+            col_text.append("Logical Type: ", style="bold")
+            col_text.append(f"{col.logical_type}\n", style="cyan")
+        else:
+            # Add blank line for alignment
+            col_text.append("\n")
+
+        col_text.append("\n")
+
+        # Repetition level
+        col_text.append("Max Repetition Level: ", style="bold")
+        col_text.append(f"{col.max_repetition_level}\n", style="dim")
+        if col.max_repetition_level == 0:
+            col_text.append("  → Not repeated (flat value)\n", style="dim italic")
+        else:
+            col_text.append("  → Repeated (list/nested lists)\n", style="dim italic")
+
+        # Definition level
+        col_text.append("Max Definition Level: ", style="bold")
+        col_text.append(f"{col.max_definition_level}\n", style="dim")
+
+        # Explain what definition level means
+        if col.max_definition_level == 0:
+            col_text.append("  → REQUIRED (no nulls allowed)\n", style="dim italic")
+        else:
+            col_text.append("  → OPTIONAL (value can be null)\n", style="dim italic")
+
+        return col_text
+
+    def _column_details(self) -> Panel:
+        """
+        Create Panel with column details grid.
+
+        Returns
+        -------
+            Panel: Rich Panel containing column information in a 3-column grid
+        """
+        parquet_schema = self.reader.schema_parquet
+        num_columns = len(parquet_schema.names)
+        column_sizes = self._calculate_column_sizes()
+
+        # Create a table grid for column panels (3 columns wide)
+        schema_table = create_column_grid(num_columns=3)
 
         # Build column panels
         cols_per_row = 3
@@ -434,73 +522,8 @@ class SchemaTab(BaseParquetTab):
                     col = parquet_schema.column(col_idx)
                     name = parquet_schema.names[col_idx]
 
-                    # Build column info
-                    col_text = Text()
-
-                    # Show total size
-                    if col_idx in column_sizes:
-                        compressed, uncompressed = column_sizes[col_idx]
-                        if compressed != uncompressed:
-                            col_text.append("Compressed: ", style="bold")
-                            col_text.append(f"{format_size(compressed)}\n", style="dim")
-                            col_text.append("Uncompressed: ", style="bold")
-                            col_text.append(
-                                f"{format_size(uncompressed)}\n", style="dim"
-                            )
-                            # Calculate compression ratio
-                            if uncompressed > 0:
-                                compression_pct = (1 - compressed / uncompressed) * 100
-                                ratio_style = (
-                                    "green" if compression_pct > 0 else "yellow"
-                                )
-                                col_text.append("Compression: ", style="bold")
-                                col_text.append(
-                                    f"{compression_pct:.1f}%\n", style=ratio_style
-                                )
-                        else:
-                            col_text.append("Size: ", style="bold")
-                            col_text.append(f"{format_size(compressed)}\n", style="dim")
-                        col_text.append("\n")
-
-                    # Physical type
-                    col_text.append("Physical Type: ", style="bold")
-                    col_text.append(f"{col.physical_type}\n", style="yellow")
-
-                    # Logical type (if present and meaningful)
-                    if col.logical_type is not None and str(col.logical_type) != "None":
-                        col_text.append("Logical Type: ", style="bold")
-                        col_text.append(f"{col.logical_type}\n", style="cyan")
-                    else:
-                        # Add blank line for alignment
-                        col_text.append("\n")
-
-                    col_text.append("\n")
-
-                    # Repetition level
-                    col_text.append("Max Repetition Level: ", style="bold")
-                    col_text.append(f"{col.max_repetition_level}\n", style="dim")
-                    if col.max_repetition_level == 0:
-                        col_text.append(
-                            "  → Not repeated (flat value)\n", style="dim italic"
-                        )
-                    else:
-                        col_text.append(
-                            "  → Repeated (list/nested lists)\n", style="dim italic"
-                        )
-
-                    # Definition level
-                    col_text.append("Max Definition Level: ", style="bold")
-                    col_text.append(f"{col.max_definition_level}\n", style="dim")
-
-                    # Explain what definition level means
-                    if col.max_definition_level == 0:
-                        col_text.append(
-                            "  → REQUIRED (no nulls allowed)\n", style="dim italic"
-                        )
-                    else:
-                        col_text.append(
-                            "  → OPTIONAL (value can be null)\n", style="dim italic"
-                        )
+                    # Build column info using helper
+                    col_text = self._build_column_info(col, col_idx, column_sizes)
 
                     col_panel = Panel(
                         col_text,
@@ -515,14 +538,21 @@ class SchemaTab(BaseParquetTab):
 
             schema_table.add_row(*row_panels)
 
-        # Column details panel
-        column_details_panel = Panel(
+        return Panel(
             schema_table,
             title="[cyan]Column Details[/cyan]",
             border_style="cyan",
         )
 
-        return Group(schema_structure_panel, Text(), column_details_panel)
+    def render_tab_content(self) -> Group:
+        """
+        Render schema information.
+
+        Returns
+        -------
+            Group: Rich renderable showing Parquet schema as column panels and structure
+        """
+        return Group(self._schema_structure(), Text(), self._column_details())
 
 
 class StatsTab(BaseParquetTab):
