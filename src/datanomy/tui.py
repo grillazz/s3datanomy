@@ -1,5 +1,7 @@
 """Terminal UI for exploring Parquet files."""
 
+from typing import Any
+
 from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
@@ -695,6 +697,116 @@ class StatsTab(Static):
         return Group(stats_table)
 
 
+class DataTab(Static):
+    """Widget displaying data preview."""
+
+    def __init__(self, reader: ParquetReader, num_rows: int = 50) -> None:
+        """
+        Initialize the data view.
+
+        Parameters
+        ----------
+            reader: ParquetReader instance
+            num_rows: Number of rows to display (default: 50)
+        """
+        super().__init__()
+        self.reader = reader
+        self.num_rows = num_rows
+
+    def compose(self) -> ComposeResult:
+        """Render the data view."""
+        yield Static(self._render_data(), id="data-content")
+
+    @staticmethod
+    def _format_value(value: Any, max_length: int = 50) -> str:
+        """
+        Format a value for display.
+
+        Parameters
+        ----------
+            value: The value to format
+            max_length: Maximum string length before truncation
+
+        Returns
+        -------
+            str: Formatted value string
+        """
+        if value is None:
+            return "NULL"
+
+        value_str = str(value)
+        if len(value_str) > max_length:
+            return f"{value_str[: max_length - 3]}..."
+        return value_str
+
+    def _render_data(self) -> Group:
+        """
+        Render data preview table.
+
+        Returns
+        -------
+            Group: Rich renderable showing data rows
+        """
+        # Read data from the Parquet file
+        try:
+            table = self.reader.parquet_file.read(columns=None, use_threads=True)
+
+            # Limit to requested number of rows
+            if len(table) > self.num_rows:
+                table = table.slice(0, self.num_rows)
+
+            num_rows_display = len(table)
+            total_rows = self.reader.num_rows
+
+        except Exception as e:
+            error_text = Text()
+            error_text.append(f"Error reading data: {e}", style="red")
+            return Group(Panel(error_text, title="[red]Error[/red]"))
+
+        # Create header info
+        header_text = Text()
+        header_text.append(
+            f"Showing {num_rows_display:,} of {total_rows:,} rows", style="cyan bold"
+        )
+
+        # Create Rich table
+        data_table = Table(
+            show_header=True,
+            header_style="bold cyan",
+            border_style="dim",
+            expand=False,
+            box=None,
+        )
+
+        # Add columns
+        for col_name in table.schema.names:
+            data_table.add_column(col_name, style="white", no_wrap=False)
+
+        # Add rows
+        for i in range(num_rows_display):
+            row_values: list[str | Text] = []
+            for col_name in table.schema.names:
+                value = table[col_name][i].as_py()
+                formatted_value = self._format_value(value)
+
+                # Style NULL values differently
+                if value is None:
+                    row_values.append(Text(formatted_value, style="dim yellow"))
+                else:
+                    row_values.append(formatted_value)
+
+            data_table.add_row(*row_values)
+
+        # Wrap table in panel
+        table_panel = Panel(
+            data_table,
+            title="[cyan]Data Preview[/cyan]",
+            border_style="cyan",
+        )
+
+        return Group(header_text, Text(), table_panel)
+
+
 class MetadataTab(Static):
     """Display Parquet file metadata."""
 
@@ -815,7 +927,7 @@ class DatanomyApp(App):
         padding: 1;
     }
 
-    #structure-content, #schema-content, #stats-content {
+    #structure-content, #schema-content, #stats-content, #data-content {
         padding: 1;
     }
     """
@@ -848,7 +960,7 @@ class DatanomyApp(App):
             with TabPane("Schema", id="tab-schema"):
                 yield ScrollableContainer(SchemaTab(self.reader))
             with TabPane("Data", id="tab-data"):
-                yield Static("[dim]Data preview - Coming soon[/dim]")
+                yield ScrollableContainer(DataTab(self.reader))
             with TabPane("Metadata", id="tab-metadata"):
                 yield ScrollableContainer(MetadataTab(self.reader))
             with TabPane("Stats", id="tab-stats"):
