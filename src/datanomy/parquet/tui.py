@@ -8,6 +8,7 @@ from textual.app import ComposeResult
 from textual.widgets import Static
 
 from datanomy.parquet.reader import ParquetReader
+from datanomy.utils import format_size
 
 
 class StructureTab(Static):
@@ -28,28 +29,6 @@ class StructureTab(Static):
         """Render the structure view."""
         yield Static(self._render_structure(), id="structure-content")
 
-    @staticmethod
-    def _format_size(size_bytes: int) -> str:
-        """
-        Format size in bytes to human-readable format with byte count.
-
-        Parameters
-        ----------
-            size_bytes: Size in bytes
-
-        Returns
-        -------
-            str: Formatted size string (e.g., "1.23 KB (1234 bytes)")
-        """
-        if size_bytes < 1024:
-            return f"{size_bytes} bytes"
-        elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.2f} KB ({size_bytes:,} bytes)"
-        elif size_bytes < 1024 * 1024 * 1024:
-            return f"{size_bytes / (1024 * 1024):.2f} MB ({size_bytes:,} bytes)"
-        else:
-            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB ({size_bytes:,} bytes)"
-
     def _render_structure(self) -> Group:
         """
         Render the Parquet file structure diagram.
@@ -58,7 +37,7 @@ class StructureTab(Static):
         -------
             Group: Rich renderable showing file structure
         """
-        file_size_str = self._format_size(self.reader.file_size)
+        file_size_str = format_size(self.reader.file_size)
 
         # File info panel
         file_info = Text()
@@ -94,8 +73,8 @@ class StructureTab(Static):
                 for j in range(rg.num_columns)
             )
 
-            compressed_str = self._format_size(compressed_sum)
-            uncompressed_str = self._format_size(uncompressed_sum)
+            compressed_str = format_size(compressed_sum)
+            uncompressed_str = format_size(uncompressed_sum)
 
             # Summary info
             rg_summary = Text()
@@ -132,15 +111,13 @@ class StructureTab(Static):
                     col_idx = row_idx + col_offset
                     if col_idx < cols_to_display:
                         col = rg.column(col_idx)
-                        col_compressed_str = self._format_size(
-                            col.total_compressed_size
-                        )
+                        col_compressed_str = format_size(col.total_compressed_size)
                         col_name = col.path_in_schema
                         is_compressed = col.compression != "UNCOMPRESSED"
 
                         col_text = Text()
                         if is_compressed:
-                            col_uncompressed_str = self._format_size(
+                            col_uncompressed_str = format_size(
                                 col.total_uncompressed_size
                             )
                             col_text.append(
@@ -204,7 +181,7 @@ class StructureTab(Static):
         page_index_size = self.reader.page_index_size
         page_index_panels: list[Panel | Text] = []
         if page_index_size > 0:
-            page_index_size_str = self._format_size(page_index_size)
+            page_index_size_str = format_size(page_index_size)
 
             # Check what indexes and statistics are actually present
             has_col_index = False
@@ -312,7 +289,7 @@ class StructureTab(Static):
                 page_index_panels.append(page_index_panel)
 
         # Footer metadata
-        metadata_size_str = self._format_size(self.reader.metadata_size)
+        metadata_size_str = format_size(self.reader.metadata_size)
 
         footer_text = Text()
         footer_text.append(f"Total Rows: {self.reader.num_rows:,}\n")
@@ -354,28 +331,6 @@ class SchemaTab(Static):
     def compose(self) -> ComposeResult:
         """Render the schema view."""
         yield Static(self._render_schema(), id="schema-content")
-
-    @staticmethod
-    def _format_size(size_bytes: int) -> str:
-        """
-        Format size in bytes to human-readable format with byte count.
-
-        Parameters
-        ----------
-            size_bytes: Size in bytes
-
-        Returns
-        -------
-            str: Formatted size string (e.g., "1.23 KB (1234 bytes)")
-        """
-        if size_bytes < 1024:
-            return f"{size_bytes} bytes"
-        elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.2f} KB ({size_bytes:,} bytes)"
-        elif size_bytes < 1024 * 1024 * 1024:
-            return f"{size_bytes / (1024 * 1024):.2f} MB ({size_bytes:,} bytes)"
-        else:
-            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB ({size_bytes:,} bytes)"
 
     def _render_schema(self) -> Group:
         """
@@ -449,12 +404,10 @@ class SchemaTab(Static):
                         compressed, uncompressed = column_sizes[col_idx]
                         if compressed != uncompressed:
                             col_text.append("Compressed: ", style="bold")
-                            col_text.append(
-                                f"{self._format_size(compressed)}\n", style="dim"
-                            )
+                            col_text.append(f"{format_size(compressed)}\n", style="dim")
                             col_text.append("Uncompressed: ", style="bold")
                             col_text.append(
-                                f"{self._format_size(uncompressed)}\n", style="dim"
+                                f"{format_size(uncompressed)}\n", style="dim"
                             )
                             # Calculate compression ratio
                             if uncompressed > 0:
@@ -468,9 +421,7 @@ class SchemaTab(Static):
                                 )
                         else:
                             col_text.append("Size: ", style="bold")
-                            col_text.append(
-                                f"{self._format_size(compressed)}\n", style="dim"
-                            )
+                            col_text.append(f"{format_size(compressed)}\n", style="dim")
                         col_text.append("\n")
 
                     # Physical type
@@ -812,18 +763,6 @@ class MetadataTab(Static):
         super().__init__()
         self.reader = reader
 
-    @staticmethod
-    def _format_size(size_bytes: int) -> str:
-        """Format size in bytes to human-readable format."""
-        if size_bytes < 1024:
-            return f"{size_bytes} bytes"
-        elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.2f} KB ({size_bytes:,} bytes)"
-        elif size_bytes < 1024 * 1024 * 1024:
-            return f"{size_bytes / (1024 * 1024):.2f} MB ({size_bytes:,} bytes)"
-        else:
-            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB ({size_bytes:,} bytes)"
-
     def compose(self) -> ComposeResult:
         """Compose the metadata view."""
         yield Static(self._render_metadata(), id="metadata-content")
@@ -839,9 +778,7 @@ class MetadataTab(Static):
         file_info.append("Format version: ", style="bold")
         file_info.append(f"{metadata.format_version}\n", style="cyan")
         file_info.append("Metadata size: ", style="bold")
-        file_info.append(
-            f"{self._format_size(metadata.serialized_size)}\n", style="cyan"
-        )
+        file_info.append(f"{format_size(metadata.serialized_size)}\n", style="cyan")
         file_info.append("\n")
 
         file_info.append("Total rows: ", style="bold")
@@ -863,9 +800,9 @@ class MetadataTab(Static):
 
         file_info.append("\n")
         file_info.append("Total compressed size: ", style="bold")
-        file_info.append(f"{self._format_size(total_compressed)}\n", style="cyan")
+        file_info.append(f"{format_size(total_compressed)}\n", style="cyan")
         file_info.append("Total uncompressed size: ", style="bold")
-        file_info.append(f"{self._format_size(total_uncompressed)}\n", style="cyan")
+        file_info.append(f"{format_size(total_uncompressed)}\n", style="cyan")
 
         if total_uncompressed > 0:
             compression_pct = (1 - total_compressed / total_uncompressed) * 100
