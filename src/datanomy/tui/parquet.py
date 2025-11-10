@@ -45,13 +45,30 @@ class BaseParquetTab(Static):
 class StructureTab(BaseParquetTab):
     """Widget displaying Parquet file structure."""
 
-    def render_tab_content(self) -> Group:
+    def _header(self) -> Panel:
         """
-        Render the Parquet file structure diagram.
+        Create Text for Parquet Header information.
 
         Returns
         -------
-            Group: Rich renderable showing file structure
+            Panel: Rich Panel with Parquet Header representation
+        """
+        header_text = Text()
+        header_text.append("Magic Number: PAR1\n", style="yellow")
+        header_text.append("Size: 4 bytes")
+        return Panel(
+            header_text,
+            title="Header",
+            border_style="yellow",
+        )
+
+    def _file_info(self) -> Text:
+        """
+        Create Text for Parquet File information.
+
+        Returns
+        -------
+            Text: Rich Text with File Information representation
         """
         file_size_str = format_size(self.reader.file_size)
 
@@ -61,19 +78,18 @@ class StructureTab(BaseParquetTab):
         file_info.append(f"{self.reader.file_path.name}\n")
         file_info.append("Size: ", style="bold")
         file_info.append(file_size_str)
+        return file_info
 
-        # Header section
-        header_text = Text()
-        header_text.append("Magic Number: PAR1\n", style="yellow")
-        header_text.append("Size: 4 bytes")
-        header_panel = Panel(
-            header_text,
-            title="Header",
-            border_style="yellow",
-        )
+    def _row_groups(self) -> list[Panel]:
+        """
+        Create Panels for each Row Group.
 
+        Returns
+        -------
+            list[Panel]: List of Rich Panels for Row Groups
+        """
         # Row groups
-        row_group_panels = []
+        row_group_panels: list[Panel] = []
         for i in range(self.reader.num_row_groups):
             rg = self.reader.get_row_group_info(i)
 
@@ -189,10 +205,18 @@ class StructureTab(BaseParquetTab):
                 rg_content, title=f"[green]Row Group {i}[/green]", border_style="green"
             )
             row_group_panels.append(panel)
+        return row_group_panels
 
-        # Page indexes section (between row groups and footer)
+    def _index_pages(self) -> list[Panel]:
+        """
+        Create Panels for Page Indexes if present.
+
+        Returns
+        -------
+            list[Panel]: List of Rich Panels for Page Indexes
+        """
         page_index_size = self.reader.page_index_size
-        page_index_panels: list[Panel | Text] = []
+        page_index_panels: list[Panel] = []
         if page_index_size > 0:
             page_index_size_str = format_size(page_index_size)
 
@@ -300,8 +324,16 @@ class StructureTab(BaseParquetTab):
                     border_style="magenta",
                 )
                 page_index_panels.append(page_index_panel)
+        return page_index_panels
 
-        # Footer metadata
+    def _footer(self) -> Panel:
+        """
+        Create Text for Parquet Footer information.
+
+        Returns
+        -------
+            Panel: Rich Panel with Parquet Footer representation
+        """
         metadata_size_str = format_size(self.reader.metadata_size)
 
         footer_text = Text()
@@ -312,17 +344,28 @@ class StructureTab(BaseParquetTab):
         footer_text.append("Magic Number: PAR1", style="yellow")
         footer_text.append(" (4 bytes)")
 
-        footer_panel = Panel(
-            footer_text, title="[blue]Footer[/blue]", border_style="blue"
-        )
+        return Panel(footer_text, title="[blue]Footer[/blue]", border_style="blue")
 
-        # Combine all sections
-        sections: list[Text | Panel] = [file_info, Text(), header_panel, Text()]
-        sections.extend(row_group_panels)
+    def render_tab_content(self) -> Group:
+        """
+        Render the Parquet file structure diagram.
+
+        Returns
+        -------
+            Group: Rich renderable showing file structure
+        """
+        sections: list[Text | Panel] = [
+            self._file_info(),
+            Text(),
+            self._header(),
+            Text(),
+        ]
+        sections.extend(self._row_groups())
+        page_index_panels = self._index_pages()
         if page_index_panels:
             sections.append(Text())
             sections.extend(page_index_panels)
-        sections.extend([Text(), footer_panel])
+        sections.extend([Text(), self._footer()])
 
         return Group(*sections)
 
