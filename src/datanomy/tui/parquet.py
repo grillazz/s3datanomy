@@ -759,36 +759,42 @@ class DataTab(BaseParquetTab):
             return f"{value_str[: max_length - 3]}..."
         return value_str
 
-    def render_tab_content(self) -> Group:
+    def _read_data(self) -> tuple[Any, int, int]:
         """
-        Render data preview table.
+        Read and slice data from Parquet file.
 
         Returns
         -------
-            Group: Rich renderable showing data rows
+            tuple[Any, int, int]: (table, num_rows_display, total_rows)
+
+        Raises
+        ------
+            Exception: If reading data fails
         """
-        # Read data from the Parquet file
-        try:
-            table = self.reader.parquet_file.read(columns=None, use_threads=True)
+        table = self.reader.parquet_file.read(columns=None, use_threads=True)
 
-            # Limit to requested number of rows
-            if len(table) > self.num_rows:
-                table = table.slice(0, self.num_rows)
+        # Limit to requested number of rows
+        if len(table) > self.num_rows:
+            table = table.slice(0, self.num_rows)
 
-            num_rows_display = len(table)
-            total_rows = self.reader.num_rows
+        num_rows_display = len(table)
+        total_rows = self.reader.num_rows
 
-        except Exception as e:
-            error_text = Text()
-            error_text.append(f"Error reading data: {e}", style="red")
-            return Group(Panel(error_text, title="[red]Error[/red]"))
+        return table, num_rows_display, total_rows
 
-        # Create header info
-        header_text = Text()
-        header_text.append(
-            f"Showing {num_rows_display:,} of {total_rows:,} rows", style="cyan bold"
-        )
+    def _create_data_table(self, table: Any, num_rows_display: int) -> Panel:
+        """
+        Create Rich table with data rows.
 
+        Parameters
+        ----------
+            table: PyArrow table
+            num_rows_display: Number of rows to display
+
+        Returns
+        -------
+            Panel: Rich Panel containing data table
+        """
         # Create Rich table
         data_table = Table(
             show_header=True,
@@ -818,11 +824,36 @@ class DataTab(BaseParquetTab):
             data_table.add_row(*row_values)
 
         # Wrap table in panel
-        table_panel = Panel(
+        return Panel(
             data_table,
             title="[cyan]Data Preview[/cyan]",
             border_style="cyan",
         )
+
+    def render_tab_content(self) -> Group:
+        """
+        Render data preview table.
+
+        Returns
+        -------
+            Group: Rich renderable showing data rows
+        """
+        # Read data from the Parquet file
+        try:
+            table, num_rows_display, total_rows = self._read_data()
+        except Exception as e:
+            error_text = Text()
+            error_text.append(f"Error reading data: {e}", style="red")
+            return Group(Panel(error_text, title="[red]Error[/red]"))
+
+        # Create header info
+        header_text = Text()
+        header_text.append(
+            f"Showing {num_rows_display:,} of {total_rows:,} rows", style="cyan bold"
+        )
+
+        # Create data table
+        table_panel = self._create_data_table(table, num_rows_display)
 
         return Group(header_text, Text(), table_panel)
 
@@ -830,12 +861,39 @@ class DataTab(BaseParquetTab):
 class MetadataTab(BaseParquetTab):
     """Display Parquet file metadata."""
 
-    def render_tab_content(self) -> Group:
-        """Render file metadata."""
+    def _calculate_total_sizes(self) -> tuple[int, int]:
+        """
+        Calculate total compressed and uncompressed sizes across all row groups.
+
+        Returns
+        -------
+            tuple[int, int]: (total_compressed, total_uncompressed)
+        """
+        total_compressed = 0
+        total_uncompressed = 0
         metadata = self.reader.metadata
 
-        # File information section
+        for rg_idx in range(metadata.num_row_groups):
+            rg = metadata.row_group(rg_idx)
+            for col_idx in range(rg.num_columns):
+                col = rg.column(col_idx)
+                total_compressed += col.total_compressed_size
+                total_uncompressed += col.total_uncompressed_size
+
+        return total_compressed, total_uncompressed
+
+    def _file_info(self) -> Panel:
+        """
+        Create Panel with file information.
+
+        Returns
+        -------
+            Panel: Rich Panel with file metadata information
+        """
+        metadata = self.reader.metadata
         file_info = Text()
+
+        # Basic metadata
         file_info.append("Created by: ", style="bold")
         file_info.append(f"{metadata.created_by}\n", style="cyan")
         file_info.append("Format version: ", style="bold")
@@ -844,6 +902,7 @@ class MetadataTab(BaseParquetTab):
         file_info.append(f"{format_size(metadata.serialized_size)}\n", style="cyan")
         file_info.append("\n")
 
+        # Data statistics
         file_info.append("Total rows: ", style="bold")
         file_info.append(f"{metadata.num_rows:,}\n", style="green")
         file_info.append("Total columns: ", style="bold")
@@ -851,16 +910,8 @@ class MetadataTab(BaseParquetTab):
         file_info.append("Row groups: ", style="bold")
         file_info.append(f"{metadata.num_row_groups}\n", style="green")
 
-        # Calculate total compressed and uncompressed sizes
-        total_compressed = 0
-        total_uncompressed = 0
-        for rg_idx in range(metadata.num_row_groups):
-            rg = metadata.row_group(rg_idx)
-            for col_idx in range(rg.num_columns):
-                col = rg.column(col_idx)
-                total_compressed += col.total_compressed_size
-                total_uncompressed += col.total_uncompressed_size
-
+        # Size information
+        total_compressed, total_uncompressed = self._calculate_total_sizes()
         file_info.append("\n")
         file_info.append("Total compressed size: ", style="bold")
         file_info.append(f"{format_size(total_compressed)}\n", style="cyan")
@@ -873,14 +924,23 @@ class MetadataTab(BaseParquetTab):
             file_info.append("Compression ratio: ", style="bold")
             file_info.append(f"{compression_pct:.1f}%\n", style=ratio_style)
 
-        file_info_panel = Panel(
+        return Panel(
             file_info,
             title="[cyan]File Information[/cyan]",
             border_style="cyan",
         )
 
-        # Custom metadata section
+    def _custom_metadata(self) -> Panel:
+        """
+        Create Panel with custom metadata.
+
+        Returns
+        -------
+            Panel: Rich Panel with custom metadata key-value pairs
+        """
+        metadata = self.reader.metadata
         custom_metadata = Text()
+
         if metadata.metadata:
             for key, value in metadata.metadata.items():
                 # Keys and values are bytes
@@ -903,10 +963,18 @@ class MetadataTab(BaseParquetTab):
         else:
             custom_metadata.append("No custom metadata found", style="dim yellow")
 
-        custom_metadata_panel = Panel(
+        return Panel(
             custom_metadata,
             title="[cyan]Custom Metadata[/cyan]",
             border_style="cyan",
         )
 
-        return Group(file_info_panel, Text(), custom_metadata_panel)
+    def render_tab_content(self) -> Group:
+        """
+        Render file metadata.
+
+        Returns
+        -------
+            Group: Rich renderable showing file and custom metadata
+        """
+        return Group(self._file_info(), Text(), self._custom_metadata())
