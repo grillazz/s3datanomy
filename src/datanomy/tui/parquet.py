@@ -558,106 +558,119 @@ class SchemaTab(BaseParquetTab):
 class StatsTab(BaseParquetTab):
     """Widget displaying column statistics."""
 
-    def render_tab_content(self) -> Group:
+    def _has_any_stats(self) -> bool:
         """
-        Render column statistics.
+        Check if any statistics exist in the file.
 
         Returns
         -------
-            Group: Rich renderable showing statistics per column
+            bool: True if at least one column has statistics
         """
-        num_columns = self.reader.metadata.num_columns
-
-        # Check if any statistics exist in the file
-        has_any_stats = False
         for rg_idx in range(self.reader.num_row_groups):
             rg = self.reader.get_row_group_info(rg_idx)
             for col_idx in range(rg.num_columns):
                 col = rg.column(col_idx)
                 if col.is_stats_set:
-                    has_any_stats = True
-                    break
-            if has_any_stats:
-                break
+                    return True
+        return False
 
-        if not has_any_stats:
-            no_stats_text = Text()
-            no_stats_text.append(
-                "No statistics found in this Parquet file.\n\n", style="yellow"
-            )
-            no_stats_text.append(
-                "Statistics can be written during file creation using write options.",
-                style="dim",
-            )
-            return Group(Panel(no_stats_text, title="[yellow]Statistics[/yellow]"))
+    def _no_stats_message(self) -> Group:
+        """
+        Create message panel when no statistics are available.
 
-        # Create a table grid for column statistics (3 columns wide)
+        Returns
+        -------
+            Group: Rich Group with "no statistics" message
+        """
+        no_stats_text = Text()
+        no_stats_text.append(
+            "No statistics found in this Parquet file.\n\n", style="yellow"
+        )
+        no_stats_text.append(
+            "Statistics can be written during file creation using write options.",
+            style="dim",
+        )
+        return Group(Panel(no_stats_text, title="[yellow]Statistics[/yellow]"))
+
+    def _build_column_stats_text(self, col_idx: int) -> Text:
+        """
+        Build statistics text for a single column across all row groups.
+
+        Parameters
+        ----------
+            col_idx: Column index
+
+        Returns
+        -------
+            Text: Rich Text with column statistics
+        """
+        col_text = Text()
+        has_stats_for_col = False
+
+        for rg_idx in range(self.reader.num_row_groups):
+            rg = self.reader.get_row_group_info(rg_idx)
+            col_chunk = rg.column(col_idx)
+
+            if col_chunk.is_stats_set:
+                has_stats_for_col = True
+                stats = col_chunk.statistics
+
+                # Row group header
+                if self.reader.num_row_groups > 1:
+                    col_text.append(f"Row Group {rg_idx}:\n", style="bold cyan")
+
+                # Number of values (always present when stats are set)
+                col_text.append("  num_values: ", style="bold")
+                col_text.append(f"{stats.num_values:,}\n", style="cyan")
+
+                # Min/Max
+                if stats.has_min_max:
+                    col_text.append("  min: ", style="bold")
+                    col_text.append(f"{stats.min}\n", style="green")
+                    col_text.append("  max: ", style="bold")
+                    col_text.append(f"{stats.max}\n", style="green")
+
+                # Null count
+                if stats.has_null_count:
+                    col_text.append("  null_count: ", style="bold")
+                    col_text.append(f"{stats.null_count:,}\n", style="yellow")
+
+                # Distinct count
+                if stats.has_distinct_count:
+                    col_text.append("  distinct_count: ", style="bold")
+                    col_text.append(f"{stats.distinct_count:,}\n", style="magenta")
+
+                # Add spacing between row groups
+                if rg_idx < self.reader.num_row_groups - 1:
+                    col_text.append("\n")
+
+        # If no statistics for this column, show message
+        if not has_stats_for_col:
+            col_text.append("No statistics available", style="dim yellow")
+
+        return col_text
+
+    def _build_stats_grid(self) -> Table:
+        """
+        Build the statistics grid with equal-height panels.
+
+        Returns
+        -------
+            Table: Rich Table grid with column statistics
+        """
+        num_columns = self.reader.metadata.num_columns
         stats_table = create_column_grid(num_columns=3)
 
         # Build statistics panels per column
         cols_per_row = 3
         for row_idx in range(0, num_columns, cols_per_row):
-            row_panels: list[Panel | Text] = []
-            row_texts: list[Text] = []  # Store texts to calculate max height
+            row_texts: list[Text] = []
 
             # First pass: build all text content
             for col_offset in range(cols_per_row):
                 col_idx = row_idx + col_offset
                 if col_idx < num_columns:
-                    col_name = self.reader.schema_parquet.names[col_idx]
-
-                    # Collect statistics from all row groups for this column
-                    col_text = Text()
-                    has_stats_for_col = False
-
-                    for rg_idx in range(self.reader.num_row_groups):
-                        rg = self.reader.get_row_group_info(rg_idx)
-                        col_chunk = rg.column(col_idx)
-
-                        if col_chunk.is_stats_set:
-                            has_stats_for_col = True
-                            stats = col_chunk.statistics
-
-                            # Row group header
-                            if self.reader.num_row_groups > 1:
-                                col_text.append(
-                                    f"Row Group {rg_idx}:\n", style="bold cyan"
-                                )
-
-                            # Number of values (always present when stats are set)
-                            col_text.append("  num_values: ", style="bold")
-                            col_text.append(f"{stats.num_values:,}\n", style="cyan")
-
-                            # Min/Max
-                            if stats.has_min_max:
-                                col_text.append("  min: ", style="bold")
-                                col_text.append(f"{stats.min}\n", style="green")
-                                col_text.append("  max: ", style="bold")
-                                col_text.append(f"{stats.max}\n", style="green")
-
-                            # Null count
-                            if stats.has_null_count:
-                                col_text.append("  null_count: ", style="bold")
-                                col_text.append(
-                                    f"{stats.null_count:,}\n", style="yellow"
-                                )
-
-                            # Distinct count
-                            if stats.has_distinct_count:
-                                col_text.append("  distinct_count: ", style="bold")
-                                col_text.append(
-                                    f"{stats.distinct_count:,}\n", style="magenta"
-                                )
-
-                            # Add spacing between row groups
-                            if rg_idx < self.reader.num_row_groups - 1:
-                                col_text.append("\n")
-
-                    # If no statistics for this column, show message
-                    if not has_stats_for_col:
-                        col_text.append("No statistics available", style="dim yellow")
-
-                    row_texts.append(col_text)
+                    row_texts.append(self._build_column_stats_text(col_idx))
                 else:
                     row_texts.append(Text(""))
 
@@ -667,6 +680,7 @@ class StatsTab(BaseParquetTab):
             )
 
             # Second pass: pad texts to equal height and create panels
+            row_panels: list[Panel | Text] = []
             for col_offset in range(cols_per_row):
                 col_idx = row_idx + col_offset
                 if col_idx < num_columns:
@@ -692,7 +706,20 @@ class StatsTab(BaseParquetTab):
 
             stats_table.add_row(*row_panels)
 
-        return Group(stats_table)
+        return stats_table
+
+    def render_tab_content(self) -> Group:
+        """
+        Render column statistics.
+
+        Returns
+        -------
+            Group: Rich renderable showing statistics per column
+        """
+        if not self._has_any_stats():
+            return self._no_stats_message()
+
+        return Group(self._build_stats_grid())
 
 
 class DataTab(BaseParquetTab):
