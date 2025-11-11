@@ -7,12 +7,27 @@ It provides an interactive view of your data's structure, metadata, and internal
 
 ![Parquet demo](https://github.com/user-attachments/assets/87f2f0ad-2eec-480d-b461-370ac3af6122)
 
-## Features (MVP)
+## Features for Parquet view
 
-- **Schema inspection**: View column names and types
-- **Row group details**: See how your data is organized
-- **File metadata**: Size, row counts, and more
-- **Rich terminal UI**: Navigate with ease using Textual
+### General Structure
+
+![General Structure](https://github.com/user-attachments/assets/eee4ea85-e5c8-4661-a2e2-0321b26076f1)
+
+### Schema
+
+![Schema](https://github.com/user-attachments/assets/e66087ce-f8b4-439d-b7fe-78da5f5d8a48)
+
+### Data
+
+![Data](https://github.com/user-attachments/assets/cbe278af-0240-4ded-9b0e-704ddb489e71)
+
+### Metadata
+
+![Metadata](https://github.com/user-attachments/assets/a71cf396-8c00-40e2-94de-da38ce4af745)
+
+### Stats
+
+![Stats](https://github.com/user-attachments/assets/f437a6a8-be71-413b-b15f-10b4376df981)
 
 ## Installation
 
