@@ -5,6 +5,8 @@
 **Datanomy** is a terminal-based tool for inspecting and understanding data files.
 It provides an interactive view of your data's structure, metadata, and internal organization.
 
+Currently only Parquet available:
+
 ![Parquet demo](https://github.com/user-attachments/assets/87f2f0ad-2eec-480d-b461-370ac3af6122)
 
 ## Features for Parquet view
@@ -78,15 +80,6 @@ uv run ruff check .
 # Lint
 uv run mypy .
 ```
-
-## Roadmap
-
-- [ ] Data preview
-- [ ] Column statistics
-- [ ] Arrow IPC file support
-- [ ] Compression details
-- [ ] Dictionary encoding info
-- [ ] Export reports
 
 ## License
 
