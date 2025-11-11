@@ -23,11 +23,13 @@ jobs:
         run: uv python install 3.14
       - name: Build
         run: uv build
-      # TODO: Implement smoke tests
-      # Check that basic features work and we didn't miss to include crucial files
-      #- name: Smoke test (wheel)
-      #  run: uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
-      #- name: Smoke test (source distribution)
-      #  run: uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
+      - name: Smoke test (wheel)
+        run: |
+          uv run --isolated --no-project --with dist/*.whl \
+            datanomy --help
+      - name: Smoke test (source distribution)
+        run: |
+          uv run --isolated --no-project --with dist/*.tar.gz \
+            datanomy --help
       - name: Publish
         run: uv publish
