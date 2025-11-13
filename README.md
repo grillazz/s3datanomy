@@ -34,10 +34,14 @@ Currently only Parquet available:
 ## Installation
 
 ```bash
-# From PyPI (coming soon)
+# From PyPI
+uv tool install datanomy
+## with pip
 pip install datanomy
 
 # From source
+uv tool install "datanomy @ git+https://github.com/raulcd/datanomy.git"
+## cloning the repo 
 git clone https://github.com/raulcd/datanomy.git
 cd datanomy
 uv sync
