@@ -17,7 +17,7 @@ class ParquetReader:
         Parameters
         ----------
             file_path: Path to the Parquet file
-        
+
         Raises
         ------
             FileNotFoundError: If the file does not exist
@@ -25,7 +25,7 @@ class ParquetReader:
         """
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
-        
+
         try:
             self.file_path = file_path
             self.parquet_file = pq.ParquetFile(file_path)

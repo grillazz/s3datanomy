@@ -67,7 +67,7 @@ def test_reader_large_schema(large_schema_parquet: Path) -> None:
 def test_reader_nonexistent_file(tmp_path: Path) -> None:
     """Test that ParquetReader raises FileNotFoundError for nonexistent files."""
     nonexistent = tmp_path / "nonexistent.parquet"
-    
+
     with pytest.raises(FileNotFoundError, match="File not found"):
         ParquetReader(nonexistent)
 
