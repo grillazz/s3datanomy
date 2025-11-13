@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+import pytest
+from pyarrow.lib import ArrowInvalid
+
 from datanomy.reader.parquet import ParquetReader
 
 
@@ -59,3 +62,27 @@ def test_reader_large_schema(large_schema_parquet: Path) -> None:
     field_names = [field.name for field in reader.schema_arrow]
     for i in range(50):
         assert f"col_{i}" in field_names
+
+
+def test_reader_nonexistent_file(tmp_path: Path) -> None:
+    """Test that ParquetReader raises FileNotFoundError for nonexistent files."""
+    nonexistent = tmp_path / "nonexistent.parquet"
+    
+    with pytest.raises(FileNotFoundError, match="File not found"):
+        ParquetReader(nonexistent)
+
+
+def test_reader_invalid_parquet_file(invalid_parquet_file: Path) -> None:
+    """Test that ParquetReader raises ArrowInvalid for non-Parquet files."""
+    with pytest.raises(ArrowInvalid, match="does not appear to be a Parquet file"):
+        ParquetReader(invalid_parquet_file)
+
+
+def test_reader_accepts_file_without_parquet_extension(
+    parquet_without_extension: Path,
+) -> None:
+    """Test that ParquetReader accepts valid Parquet files regardless of extension."""
+    # Should successfully read the file
+    reader = ParquetReader(parquet_without_extension)
+    assert reader.num_rows == 3
+    assert len(reader.schema_arrow) == 2
