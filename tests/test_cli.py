@@ -8,18 +8,6 @@ from click.testing import CliRunner
 from datanomy.cli import main
 
 
-def test_cli_rejects_non_parquet_extension(tmp_path: Path) -> None:
-    """Test that CLI rejects files without .parquet extension."""
-    bad_file = tmp_path / "test.txt"
-    bad_file.write_text("not parquet")
-
-    runner = CliRunner()
-    result = runner.invoke(main, [str(bad_file)])
-
-    assert result.exit_code == 1
-    assert "does not appear to be a Parquet file" in result.output
-
-
 def test_cli_rejects_nonexistent_file() -> None:
     """Test that CLI rejects files that don't exist."""
     runner = CliRunner()
@@ -60,19 +48,13 @@ def test_cli_creates_reader(
     mock_reader.assert_called_once_with(simple_parquet)
 
 
-def test_cli_case_insensitive_extension(tmp_path: Path) -> None:
-    """Test that CLI accepts .PARQUET extension (case insensitive)."""
-    # Create a valid parquet file with uppercase extension
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    file_path = tmp_path / "test.PARQUET"
-    table = pa.table({"id": [1, 2, 3]})
-    pq.write_table(table, file_path)
-
+def test_cli_accepts_parquet_without_extension(
+    parquet_without_extension: Path,
+) -> None:
+    """Test that CLI accepts valid Parquet files regardless of extension."""
     with patch("datanomy.cli.DatanomyApp"):
         runner = CliRunner()
-        result = runner.invoke(main, [str(file_path)])
+        result = runner.invoke(main, [str(parquet_without_extension)])
 
-        # Should accept uppercase extension
+        # Should accept file based on content, not extension
         assert result.exit_code == 0

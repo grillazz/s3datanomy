@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow.parquet as pq
+from pyarrow.lib import ArrowInvalid
 
 
 class ParquetReader:
@@ -16,9 +17,22 @@ class ParquetReader:
         Parameters
         ----------
             file_path: Path to the Parquet file
+
+        Raises
+        ------
+            FileNotFoundError: If the file does not exist
+            ArrowInvalid: If the file is not a valid Parquet file
         """
-        self.file_path = file_path
-        self.parquet_file = pq.ParquetFile(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        try:
+            self.file_path = file_path
+            self.parquet_file = pq.ParquetFile(file_path)
+        except ArrowInvalid as e:
+            raise ArrowInvalid(
+                f"{file_path} does not appear to be a Parquet file"
+            ) from e
 
     @property
     def schema_arrow(self) -> Any:

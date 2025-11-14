@@ -106,3 +106,33 @@ def large_schema_parquet(tmp_path: Path) -> Path:
     file_path = tmp_path / "large_schema.parquet"
     pq.write_table(table, file_path)
     return file_path
+
+
+@pytest.fixture
+def parquet_without_extension(tmp_path: Path) -> Path:
+    """Create a valid Parquet file without .parquet extension.
+
+    Returns:
+        Path to the created Parquet file
+    """
+    table = pa.table(
+        {
+            "id": [1, 2, 3],
+            "name": ["a", "b", "c"],
+        }
+    )
+    file_path = tmp_path / "data_file"
+    pq.write_table(table, file_path)
+    return file_path
+
+
+@pytest.fixture
+def invalid_parquet_file(tmp_path: Path) -> Path:
+    """Create a file with invalid Parquet content.
+
+    Returns:
+        Path to the created invalid file
+    """
+    file_path = tmp_path / "not_a_parquet.dat"
+    file_path.write_text("This is not a Parquet file")
+    return file_path

@@ -19,10 +19,6 @@ def main(file: Path) -> None:
     ----------
         file: Path to a Parquet file to inspect
     """
-    if not file.suffix.lower() == ".parquet":
-        click.echo(f"Error: {file} does not appear to be a Parquet file", err=True)
-        sys.exit(1)
-
     try:
         reader = ParquetReader(file)
         app = DatanomyApp(reader)
