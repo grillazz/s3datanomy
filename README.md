@@ -57,6 +57,12 @@ uvx datanomy data.parquet
 datanomy data.parquet
 ```
 
+You can also use from source using uvx. This uses the development version:
+
+```bash
+uvx "git+https://github.com/raulcd/datanomy.git" data.parquet
+```
+
 ## Keyboard Shortcuts
 
 - `q` - Quit the application
