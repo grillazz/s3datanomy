@@ -7,6 +7,90 @@ import pyarrow.parquet as pq
 from pyarrow.lib import ArrowInvalid
 
 
+class RowGroup:
+    """Class to represent a Parquet row group."""
+
+    def __init__(self, row_group_metadata: Any) -> None:
+        """
+        Initialize the RowGroup.
+
+        Parameters
+        ----------
+            row_group_metadata: Metadata for the row group
+        """
+        self._metadata = row_group_metadata
+
+    @property
+    def num_columns(self) -> int:
+        """
+        Get number of columns in the row group.
+
+        Returns
+        -------
+            Number of columns
+        """
+        return int(self._metadata.num_columns)
+
+    @property
+    def num_rows(self) -> int:
+        """
+        Get number of rows in the row group.
+
+        Returns
+        -------
+            Number of rows
+        """
+        return int(self._metadata.num_rows)
+
+    def column(self, index: int) -> Any:
+        """
+        Get metadata for a specific column in the row group.
+
+        Parameters
+        ----------
+            index: Column index
+
+        Returns
+        -------
+            Column metadata
+        """
+        return self._metadata.column(index)
+
+    @property
+    def has_compression(self) -> bool:
+        """
+        Check if any column in the row group uses compression.
+
+        Returns
+        -------
+            True if any column is compressed, False otherwise
+        """
+        for j in range(self.num_columns):
+            if self.column(j).compression != "UNCOMPRESSED":
+                return True
+        return False
+
+    @property
+    def total_sizes(self) -> tuple[int, int]:
+        """
+        Get total compressed and uncompressed size of the row group in bytes.
+
+        Returns
+        -------
+            Total compressed and uncompressed size of the row group in bytes.
+            Tuple of (compressed_size, uncompressed_size)
+        """
+        compressed_sum = sum(
+            self.column(j).total_compressed_size for j in range(self.num_columns)
+        )
+        # This should be self._metadata.total_byte_size but there's a bug on
+        # pyarrow 22.0.0, see: https://github.com/apache/arrow/issues/48138
+        uncompressed_sum = sum(
+            self.column(j).total_uncompressed_size for j in range(self.num_columns)
+        )
+        return compressed_sum, uncompressed_sum
+
+
 class ParquetReader:
     """Main class to read and inspect Parquet files."""
 
@@ -113,6 +197,20 @@ class ParquetReader:
             Row group metadata
         """
         return self.parquet_file.metadata.row_group(index)
+
+    def get_row_group(self, index: int) -> RowGroup:
+        """
+        Get a specific RowGroup object.
+
+        Parameters
+        ----------
+            index: Row group index
+
+        Returns
+        -------
+            RowGroup object
+        """
+        return RowGroup(self.parquet_file.metadata.row_group(index))
 
     @property
     def metadata_size(self) -> int:

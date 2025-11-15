@@ -92,19 +92,8 @@ class StructureTab(BaseParquetTab):
         # Row groups
         row_group_panels: list[Panel] = []
         for i in range(self.reader.num_row_groups):
-            rg = self.reader.get_row_group_info(i)
-
-            # Calculate compressed and uncompressed sizes
-            compressed_sum = sum(
-                rg.column(j).total_compressed_size for j in range(rg.num_columns)
-            )
-            uncompressed_sum = rg.total_byte_size  # This is the uncompressed size
-
-            # Check if any column is compressed
-            has_compression = any(
-                rg.column(j).compression != "UNCOMPRESSED"
-                for j in range(rg.num_columns)
-            )
+            rg = self.reader.get_row_group(i)
+            compressed_sum, uncompressed_sum = rg.total_sizes
 
             compressed_str = format_size(compressed_sum)
             uncompressed_str = format_size(uncompressed_sum)
@@ -112,7 +101,7 @@ class StructureTab(BaseParquetTab):
             # Summary info
             rg_summary = Text()
             rg_summary.append(f"Rows: {rg.num_rows:,}\n")
-            if has_compression:
+            if rg.has_compression:
                 rg_summary.append(f"Compressed: {compressed_str}\n")
                 rg_summary.append(f"Uncompressed: {uncompressed_str}\n")
                 # Calculate compression ratio

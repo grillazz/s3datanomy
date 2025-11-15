@@ -86,3 +86,15 @@ def test_reader_accepts_file_without_parquet_extension(
     reader = ParquetReader(parquet_without_extension)
     assert reader.num_rows == 3
     assert len(reader.schema_arrow) == 2
+
+
+def test_row_group_total_sizes(simple_parquet: Path) -> None:
+    """Test that row_group_total_sizes returns correct compressed and uncompressed sizes."""
+    reader = ParquetReader(simple_parquet)
+
+    row_group = reader.get_row_group(0)
+
+    assert row_group.has_compression
+    compressed_size, uncompressed_size = row_group.total_sizes
+    assert compressed_size == 474
+    assert uncompressed_size == 487
