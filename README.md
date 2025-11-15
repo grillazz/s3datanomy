@@ -50,6 +50,9 @@ uv sync
 ## Usage
 
 ```bash
+# Run without installing using uvx
+uvx datanomy data.parquet
+
 # Inspect a Parquet file
 datanomy data.parquet
 ```
