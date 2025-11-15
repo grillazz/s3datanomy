@@ -1,10 +1,17 @@
 """Parquet file reader."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pyarrow.parquet as pq
 from pyarrow.lib import ArrowInvalid
+
+
+class RowGroupSize(NamedTuple):
+    """Size information for a row group."""
+
+    compressed: int
+    uncompressed: int
 
 
 class RowGroup:
@@ -71,14 +78,13 @@ class RowGroup:
         return False
 
     @property
-    def total_sizes(self) -> tuple[int, int]:
+    def total_sizes(self) -> RowGroupSize:
         """
         Get total compressed and uncompressed size of the row group in bytes.
 
         Returns
         -------
-            Total compressed and uncompressed size of the row group in bytes.
-            Tuple of (compressed_size, uncompressed_size)
+            RowGroupSize named tuple with compressed and uncompressed sizes
         """
         compressed_sum = sum(
             self.column(j).total_compressed_size for j in range(self.num_columns)
@@ -88,7 +94,7 @@ class RowGroup:
         uncompressed_sum = sum(
             self.column(j).total_uncompressed_size for j in range(self.num_columns)
         )
-        return compressed_sum, uncompressed_sum
+        return RowGroupSize(compressed=compressed_sum, uncompressed=uncompressed_sum)
 
 
 class ParquetReader:
