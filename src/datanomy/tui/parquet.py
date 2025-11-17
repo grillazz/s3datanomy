@@ -629,7 +629,7 @@ class StatsTab(BaseParquetTab):
                     if is_decimal_int:
                         # Skip min/max display for DECIMAL with INT32/INT64 - known PyArrow bug
                         col_text.append(
-                            "  min/max: Not available (PyArrow bug GH-47955)\n",
+                            "  min/max: Not available\n",
                             style="dim yellow",
                         )
                     else:
