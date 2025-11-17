@@ -615,10 +615,28 @@ class StatsTab(BaseParquetTab):
 
                 # Min/Max
                 if stats.has_min_max:
-                    col_text.append("  min: ", style="bold")
-                    col_text.append(f"{stats.min}\n", style="green")
-                    col_text.append("  max: ", style="bold")
-                    col_text.append(f"{stats.max}\n", style="green")
+                    # WORKAROUND for PyArrow < 23.0.0 bug with DECIMAL INT32/INT64 statistics
+                    # See: https://github.com/apache/arrow/issues/47955
+                    # TODO: Remove this workaround once PyArrow 23.0.0 is released
+                    physical_type = col_chunk.physical_type
+                    logical_type = stats.logical_type
+                    is_decimal_int = (
+                        logical_type is not None
+                        and "Decimal" in str(logical_type)
+                        and physical_type in ("INT32", "INT64")
+                    )
+
+                    if is_decimal_int:
+                        # Skip min/max display for DECIMAL with INT32/INT64 - known PyArrow bug
+                        col_text.append(
+                            "  min/max: Not available (PyArrow bug GH-47955)\n",
+                            style="dim yellow",
+                        )
+                    else:
+                        col_text.append("  min: ", style="bold")
+                        col_text.append(f"{stats.min}\n", style="green")
+                        col_text.append("  max: ", style="bold")
+                        col_text.append(f"{stats.max}\n", style="green")
 
                 # Null count
                 if stats.has_null_count:
