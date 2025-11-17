@@ -12,6 +12,7 @@ dependencies = [
     "pyarrow>=22.0.0",
     "rich>=13.0.0",
     "click>=8.1.0",
+    "obstore>=0.8.2",
 ]
 
 [project.optional-dependencies]
