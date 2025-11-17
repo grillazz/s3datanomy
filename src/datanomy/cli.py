@@ -33,9 +33,9 @@ def main(
         is_s3 = file.startswith("s3://") or (access_key_id and secret_access_key)
 
         if is_s3:
-            if not file.startswith("s3://"):
-                click.echo("Error: For S3 access, file path must be an S3 URI (s3://...).", err=True)
-                sys.exit(1)
+            # if not file.startswith("s3://"):
+            #     click.echo("Error: For S3 access, file path must be an S3 URI (s3://...).", err=True)
+            #     sys.exit(1)
             if not access_key_id or not secret_access_key:
                 click.echo("Error: S3 access requires --access-key-id and --secret-access-key.", err=True)
                 sys.exit(1)

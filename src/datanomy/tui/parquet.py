@@ -76,7 +76,8 @@ class StructureTab(BaseParquetTab):
         # File info panel
         file_info = Text()
         file_info.append("File: ", style="bold")
-        file_info.append(f"{self.reader.file_path.name}\n")
+        # file_info.append(f"{self.reader.file_path.name}\n")
+        file_info.append(f"DUPA\n")
         file_info.append("Size: ", style="bold")
         file_info.append(file_size_str)
         return file_info

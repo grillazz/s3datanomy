@@ -2,6 +2,8 @@
 
 from typing import Any, NamedTuple, Optional
 
+import obstore as obs
+import pyarrow as pa
 import pyarrow.parquet as pq
 from obstore.store import S3Store
 from pyarrow.lib import ArrowInvalid
@@ -120,15 +122,19 @@ class S3ParquetReader:
             ArrowInvalid: If the file is not a valid Parquet file
         """
         self.file_path = file_uri
-        self.store = S3Store.from_url(
-            file_uri,
-            key=access_key_id,
-            secret=secret_access_key,
-            client_kwargs={"endpoint_url": endpoint_url} if endpoint_url else None,
+        self.store = S3Store(
+            "de-chl",
+            endpoint="http://localhost:9000",
+            access_key_id="minio",
+            secret_access_key="minio123",
+            virtual_hosted_style_request=False,
+            client_options={"allow_http": True},
         )
 
         try:
-            self.parquet_file = pq.ParquetFile(self.store.open(), filesystem=self.store.fs)
+            file_content = obs.get(self.store, file_uri).bytes()
+            self._file_size = len(file_content)
+            self.parquet_file = pq.ParquetFile(pa.BufferReader(file_content))
         except ArrowInvalid as e:
             raise ArrowInvalid(
                 f"{file_uri} does not appear to be a Parquet file"
@@ -198,7 +204,7 @@ class S3ParquetReader:
         -------
             File size in bytes
         """
-        return int(self.store.fs.info(self.file_path)["size"])
+        return self._file_size
 
     def get_row_group_info(self, index: int) -> Any:
         """
